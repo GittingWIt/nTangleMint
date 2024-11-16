@@ -1,9 +1,22 @@
 import React from 'react'
+import Link from 'next/link'
+import { Frame } from 'lucide-react'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <main className="flex min-h-screen flex-col items-center justify-center">
+    <div className="flex flex-col w-full min-h-screen">
+      <header className="flex items-center h-16 px-4 border-b shrink-0 md:px-6">
+        <Link href="/" className="flex items-center gap-2 text-lg font-semibold sm:text-base mr-4">
+          <Frame className="w-6 h-6" />
+          <span>nTangleMint</span>
+        </Link>
+        <nav className="hidden font-medium sm:flex flex-row items-center gap-5 text-sm lg:gap-6">
+          <Link href="/" className="text-muted-foreground">Home</Link>
+          <Link href="/about" className="text-muted-foreground">About</Link>
+          {/* Add other navigation links here */}
+        </nav>
+      </header>
+      <main className="flex min-h-[calc(100vh_-_theme(spacing.16))] bg-muted/40 flex-1 flex-col gap-4 p-4 md:gap-8 md:p-10">
         {children}
       </main>
     </div>
