@@ -1,5 +1,5 @@
 import Layout from '../components/Layout'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card,CardContent, CardDescription,CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function About() {
   return (
@@ -12,7 +12,7 @@ export default function About() {
             <CardTitle>Our Mission</CardTitle>
           </CardHeader>
           <CardContent>
-            <p>At nTangleMint, we're revolutionizing the way businesses and customers interact through innovative loyalty programs. Our mission is to create a seamless, engaging, and rewarding experience for both merchants and consumers, leveraging the power of blockchain technology and NFTs.</p>
+            <p>At nTangleMint, we're revolutionizing the way businesses and customers interact through innovative loyalty programs. Our mission is to create a seamless, engaging, and rewarding experience for both merchants and consumers, leveraging the power of blockchain technology and NFTs. By facilitating local partnerships we create stronger, more interconnected local economies.</p>
           </CardContent>
         </Card>
 
