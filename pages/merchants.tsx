@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone } from 'lucide-react'
 import { Button } from "@/components/ui/button"
@@ -13,22 +13,216 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { addDays, subMonths, format, eachDayOfInterval, eachMonthOfInterval, startOfDay, endOfDay, isBefore, differenceInDays } from 'date-fns'
 
-// Mock data for the chart
-const chartData = [
-  { name: 'Jan', participants: 100, rewards: 20 },
-  { name: 'Feb', participants: 120, rewards: 25 },
-  { name: 'Mar', participants: 150, rewards: 30 },
-  { name: 'Apr', participants: 180, rewards: 35 },
-  { name: 'May', participants: 220, rewards: 45 },
-  { name: 'Jun', participants: 270, rewards: 55 },
+// Define program colors for consistent styling
+const programColors = {
+  'Coffee Lovers': '#8884d8',
+  'Sandwich Master': '#82ca9d',
+  'Book Club Rewards': '#ffc658'
+}
+
+type Program = {
+  name: string
+  completionRate: number
+  baseParticipants: number
+  baseRewards: number
+  growthRate: number
+}
+
+const programs: Program[] = [
+  { 
+    name: 'Coffee Lovers', 
+    completionRate: 67, 
+    baseParticipants: 100,
+    baseRewards: 20,
+    growthRate: 1.2
+  },
+  { 
+    name: 'Sandwich Master', 
+    completionRate: 89, 
+    baseParticipants: 150,
+    baseRewards: 30,
+    growthRate: 1.15
+  },
+  { 
+    name: 'Book Club Rewards', 
+    completionRate: 45, 
+    baseParticipants: 80,
+    baseRewards: 15,
+    growthRate: 1.1
+  }
 ]
+
+// Function to generate data for a specific time range and programs
+const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: string[] = []) => {
+  const daysDifference = differenceInDays(endDate, startDate)
+  const useDaily = daysDifference <= 31
+  const dates = useDaily 
+    ? eachDayOfInterval({ start: startDate, end: endDate })
+    : eachMonthOfInterval({ start: startDate, end: endDate })
+
+  return dates.map((date, index) => {
+    const dataPoint: any = {
+      name: useDaily ? format(date, 'MMM dd') : format(date, 'MMM yyyy'),
+    }
+
+    // If no programs are selected, show total numbers
+    const programsToShow = selectedPrograms.length === 0 ? programs : programs.filter(p => selectedPrograms.includes(p.name))
+
+    programsToShow.forEach(program => {
+      const growthRate = useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate // Adjust growth rate for daily view
+      dataPoint[`${program.name} Participants`] = Math.round(program.baseParticipants * Math.pow(growthRate, index))
+      dataPoint[`${program.name} Rewards`] = Math.round(program.baseRewards * Math.pow(growthRate, index))
+    })
+
+    if (selectedPrograms.length === 0) {
+      dataPoint.participants = programsToShow.reduce((sum, program) => 
+        sum + Math.round(program.baseParticipants * Math.pow(useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate, index)), 0)
+      dataPoint.rewards = programsToShow.reduce((sum, program) => 
+        sum + Math.round(program.baseRewards * Math.pow(useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate, index)), 0)
+    }
+
+    return dataPoint
+  })
+}
 
 export default function MerchantsPage() {
   const [activePrograms, setActivePrograms] = useState(3)
   const [totalParticipants, setTotalParticipants] = useState(234)
   const [rewardsClaimed, setRewardsClaimed] = useState(45)
   const [selectedTimeframe, setSelectedTimeframe] = useState('6m')
+  const [chartData, setChartData] = useState([])
+  const [isCustomRangeOpen, setIsCustomRangeOpen] = useState(false)
+  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: undefined,
+    to: undefined
+  })
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([])
+
+  // Handle program selection
+  const handleProgramClick = (programName: string, event: React.MouseEvent) => {
+    event.preventDefault()
+    setSelectedPrograms(prev => {
+      if (event.ctrlKey || event.metaKey) {
+        // Toggle selection when Ctrl/Cmd is pressed
+        return prev.includes(programName)
+          ? prev.filter(p => p !== programName)
+          : [...prev, programName]
+      } else {
+        // Single selection when Ctrl/Cmd is not pressed
+        return prev.includes(programName) && prev.length === 1
+          ? [] // Deselect if it's the only selected program
+          : [programName] // Select only this program
+      }
+    })
+  }
+
+  // Update chart data when timeframe, date range, or selected programs change
+  useEffect(() => {
+    let start: Date
+    let end: Date = new Date()
+
+    switch (selectedTimeframe) {
+      case '1m':
+        start = subMonths(end, 1)
+        break
+      case '3m':
+        start = subMonths(end, 3)
+        break
+      case '6m':
+        start = subMonths(end, 6)
+        break
+      case '1y':
+        start = subMonths(end, 12)
+        break
+      case 'custom':
+        if (dateRange.from && dateRange.to) {
+          start = startOfDay(dateRange.from)
+          end = endOfDay(dateRange.to)
+        } else {
+          start = subMonths(end, 6)
+        }
+        break
+      default:
+        start = subMonths(end, 6)
+    }
+
+    const newData = generateChartData(start, end, selectedPrograms)
+    setChartData(newData)
+  }, [selectedTimeframe, dateRange, selectedPrograms])
+
+  const handleCustomRangeSelect = (range: { from?: Date; to?: Date }) => {
+    if (range.from && range.to && isBefore(range.to, range.from)) {
+      return
+    }
+
+    setDateRange(range)
+    
+    if (range.from && range.to) {
+      setSelectedTimeframe('custom')
+      setIsCustomRangeOpen(false)
+    }
+  }
+
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      setDateRange({ from: undefined, to: undefined })
+    }
+    setIsCustomRangeOpen(open)
+  }
+
+  // Generate chart lines based on selected programs
+  const generateChartLines = () => {
+    if (selectedPrograms.length === 0) {
+      return [
+        <Line 
+          key="participants"
+          yAxisId="left" 
+          type="monotone" 
+          dataKey="participants" 
+          stroke="#8884d8" 
+          name="Total Participants"
+          activeDot={{ r: 8 }} 
+        />,
+        <Line 
+          key="rewards"
+          yAxisId="right" 
+          type="monotone" 
+          dataKey="rewards" 
+          stroke="#82ca9d" 
+          name="Total Rewards"
+        />
+      ]
+    }
+
+    const lines: JSX.Element[] = []
+    selectedPrograms.forEach(program => {
+      lines.push(
+        <Line 
+          key={`${program}-participants`}
+          yAxisId="left" 
+          type="monotone" 
+          dataKey={`${program} Participants`}
+          stroke={programColors[program as keyof typeof programColors]}
+          name={`${program} Participants`}
+          activeDot={{ r: 8 }}
+        />,
+        <Line 
+          key={`${program}-rewards`}
+          yAxisId="right" 
+          type="monotone" 
+          dataKey={`${program} Rewards`}
+          stroke={programColors[program as keyof typeof programColors]}
+          name={`${program} Rewards`}
+          strokeDasharray="5 5"
+        />
+      )
+    })
+    return lines
+  }
 
   return (
     <div className="container mx-auto p-4">
@@ -89,37 +283,47 @@ export default function MerchantsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Program Performance</CardTitle>
-              <CardDescription>Overview of your loyalty programs' performance</CardDescription>
+              <CardDescription>
+                Overview of your loyalty programs' performance
+                <span className="block text-xs mt-1">
+                  Click to filter Growth Trends. Hold CTRL/CMD to select multiple programs.
+                </span>
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>Coffee Lovers</div>
-                  <div className="text-sm text-muted-foreground">67% completion rate</div>
+              {programs.map(program => (
+                <div 
+                  key={program.name}
+                  className="space-y-2"
+                  onClick={(e) => handleProgramClick(program.name, e)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className={selectedPrograms.includes(program.name) ? 'font-bold' : ''}>
+                      {program.name}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {program.completionRate}% completion rate
+                    </div>
+                  </div>
+                  <Progress 
+                    value={program.completionRate} 
+                    className={selectedPrograms.includes(program.name) ? 'ring-2 ring-offset-2' : ''}
+                  />
                 </div>
-                <Progress value={67} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>Sandwich Master</div>
-                  <div className="text-sm text-muted-foreground">89% completion rate</div>
-                </div>
-                <Progress value={89} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>Book Club Rewards</div>
-                  <div className="text-sm text-muted-foreground">45% completion rate</div>
-                </div>
-                <Progress value={45} />
-              </div>
+              ))}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>Growth Trends</CardTitle>
-              <CardDescription>Participant and reward trends over time</CardDescription>
+              <CardDescription>
+                {selectedPrograms.length === 0 
+                  ? "Overall participant and reward trends over time"
+                  : `Showing data for ${selectedPrograms.join(', ')}`
+                }
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-center mb-4">
@@ -132,24 +336,54 @@ export default function MerchantsPage() {
                     <SelectItem value="3m">Last 3 Months</SelectItem>
                     <SelectItem value="6m">Last 6 Months</SelectItem>
                     <SelectItem value="1y">Last Year</SelectItem>
+                    {dateRange.from && dateRange.to && (
+                      <SelectItem value="custom">
+                        {format(dateRange.from, 'MMM dd, yyyy')} - {format(dateRange.to, 'MMM dd, yyyy')}
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Custom Range
-                </Button>
+                
+                <Dialog open={isCustomRangeOpen} onOpenChange={handleOpenChange}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Calendar className="mr-2 h-4 w-4" />
+                      Custom Range
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-fit">
+                    <DialogHeader>
+                      <DialogTitle>Select Date Range</DialogTitle>
+                    </DialogHeader>
+                    <div className="p-4">
+                      <CalendarComponent
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={handleCustomRangeSelect}
+                        numberOfMonths={2}
+                        disabled={(date) => date > new Date()}
+                        className="flex space-x-4"
+                      />
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
+                    <XAxis 
+                      dataKey="name" 
+                      angle={-45} 
+                      textAnchor="end" 
+                      height={70}
+                      interval={chartData.length <= 31 ? 0 : 'preserveStartEnd'}
+                    />
                     <YAxis yAxisId="left" />
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="participants" stroke="#8884d8" activeDot={{ r: 8 }} />
-                    <Line yAxisId="right" type="monotone" dataKey="rewards" stroke="#82ca9d" />
+                    {generateChartLines()}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
