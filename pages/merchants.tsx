@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone } from 'lucide-react'
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,6 +16,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { addDays, subMonths, format, eachDayOfInterval, eachMonthOfInterval, startOfDay, endOfDay, isBefore, differenceInDays } from 'date-fns'
+import { DateRange, SelectRangeEventHandler } from "react-day-picker"
 
 // Define program colors for consistent styling
 const programColors = {
@@ -30,6 +31,14 @@ type Program = {
   baseParticipants: number
   baseRewards: number
   growthRate: number
+}
+
+// Define the type for chart data points
+interface ChartDataPoint {
+  name: string
+  participants?: number
+  rewards?: number
+  [key: string]: string | number | undefined // Allow dynamic program-specific fields
 }
 
 const programs: Program[] = [
@@ -56,8 +65,8 @@ const programs: Program[] = [
   }
 ]
 
-// Function to generate data for a specific time range and programs
-const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: string[] = []) => {
+// Update the return type of generateChartData
+const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: string[] = []): ChartDataPoint[] => {
   const daysDifference = differenceInDays(endDate, startDate)
   const useDaily = daysDifference <= 31
   const dates = useDaily 
@@ -65,7 +74,7 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
     : eachMonthOfInterval({ start: startDate, end: endDate })
 
   return dates.map((date, index) => {
-    const dataPoint: any = {
+    const dataPoint: ChartDataPoint = {
       name: useDaily ? format(date, 'MMM dd') : format(date, 'MMM yyyy'),
     }
 
@@ -73,7 +82,7 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
     const programsToShow = selectedPrograms.length === 0 ? programs : programs.filter(p => selectedPrograms.includes(p.name))
 
     programsToShow.forEach(program => {
-      const growthRate = useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate // Adjust growth rate for daily view
+      const growthRate = useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate
       dataPoint[`${program.name} Participants`] = Math.round(program.baseParticipants * Math.pow(growthRate, index))
       dataPoint[`${program.name} Rewards`] = Math.round(program.baseRewards * Math.pow(growthRate, index))
     })
@@ -89,17 +98,14 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
   })
 }
 
-export default function MerchantsPage() {
+export default function Component() {
   const [activePrograms, setActivePrograms] = useState(3)
   const [totalParticipants, setTotalParticipants] = useState(234)
   const [rewardsClaimed, setRewardsClaimed] = useState(45)
   const [selectedTimeframe, setSelectedTimeframe] = useState('6m')
-  const [chartData, setChartData] = useState([])
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([])
   const [isCustomRangeOpen, setIsCustomRangeOpen] = useState(false)
-  const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
-    from: undefined,
-    to: undefined
-  })
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([])
 
   // Handle program selection
@@ -139,7 +145,7 @@ export default function MerchantsPage() {
         start = subMonths(end, 12)
         break
       case 'custom':
-        if (dateRange.from && dateRange.to) {
+        if (dateRange?.from && dateRange?.to) {
           start = startOfDay(dateRange.from)
           end = endOfDay(dateRange.to)
         } else {
@@ -154,14 +160,12 @@ export default function MerchantsPage() {
     setChartData(newData)
   }, [selectedTimeframe, dateRange, selectedPrograms])
 
-  const handleCustomRangeSelect = (range: { from?: Date; to?: Date }) => {
-    if (range.from && range.to && isBefore(range.to, range.from)) {
-      return
-    }
-
+  // Update the handleCustomRangeSelect function to match the Calendar's expected type
+  const handleCustomRangeSelect: SelectRangeEventHandler = (range) => {
     setDateRange(range)
     
-    if (range.from && range.to) {
+    // Only update timeframe and close dialog when both dates are selected
+    if (range?.from && range?.to) {
       setSelectedTimeframe('custom')
       setIsCustomRangeOpen(false)
     }
@@ -169,7 +173,7 @@ export default function MerchantsPage() {
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
-      setDateRange({ from: undefined, to: undefined })
+      setDateRange(undefined)
     }
     setIsCustomRangeOpen(open)
   }
@@ -336,7 +340,7 @@ export default function MerchantsPage() {
                     <SelectItem value="3m">Last 3 Months</SelectItem>
                     <SelectItem value="6m">Last 6 Months</SelectItem>
                     <SelectItem value="1y">Last Year</SelectItem>
-                    {dateRange.from && dateRange.to && (
+                    {dateRange?.from && dateRange?.to && (
                       <SelectItem value="custom">
                         {format(dateRange.from, 'MMM dd, yyyy')} - {format(dateRange.to, 'MMM dd, yyyy')}
                       </SelectItem>
