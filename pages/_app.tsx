@@ -49,8 +49,11 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                 </Link>
               </div>
               <div className="flex items-center space-x-4">
+                <Link href="/create-restore-wallet">
+                  <Button variant="outline">Create/Restore Wallet</Button>
+                </Link>
                 <Link href="/LoginSignup">
-                  <Button variant="outline">Login / Sign Up</Button>
+                  <Button>Login / Sign Up</Button>
                 </Link>
               </div>
             </nav>
