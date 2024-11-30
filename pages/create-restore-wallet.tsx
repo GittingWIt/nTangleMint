@@ -2,13 +2,19 @@
 
 import { useState } from 'react';
 import { createNewWallet, restoreWallet } from '../bsvUtilities/bsvWallet';
-import { mintBSV20Token } from '../bsvUtilities/bsvTokens';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+
+// Define the WalletInfo type
+interface WalletInfo {
+  address: string;
+  privateKey: string;
+  mnemonic: string;
+}
 
 export default function CreateRestoreWallet() {
-  const [walletInfo, setWalletInfo] = useState(null);
+  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
   const [mnemonicPhrase, setMnemonicPhrase] = useState('');
 
   const handleCreateNewWallet = () => {
@@ -20,17 +26,6 @@ export default function CreateRestoreWallet() {
     if (mnemonicPhrase) {
       const restoredWallet = restoreWallet(mnemonicPhrase);
       setWalletInfo(restoredWallet);
-    }
-  };
-
-  const handleMintBSV20 = async () => {
-    if (walletInfo) {
-      try {
-        const txid = await mintBSV20Token(walletInfo.address, walletInfo.privateKey, 'NTANGLE', 1000);
-        console.log('BSV20 token minted, transaction ID:', txid);
-      } catch (error) {
-        console.error('Error minting BSV20 token:', error);
-      }
     }
   };
 
@@ -76,9 +71,6 @@ export default function CreateRestoreWallet() {
             <p><strong>Address:</strong> {walletInfo.address}</p>
             <p><strong>Private Key:</strong> {walletInfo.privateKey}</p>
             <p><strong>Mnemonic:</strong> {walletInfo.mnemonic}</p>
-            <div className="mt-4">
-              <Button onClick={handleMintBSV20}>Mint BSV20 Token</Button>
-            </div>
           </CardContent>
         </Card>
       )}

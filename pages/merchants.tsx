@@ -233,7 +233,7 @@ export default function Component() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Merchant Dashboard</h1>
         <Button asChild>
-          <Link href="/CreateNewProgram">
+          <Link href="/create-program">
             Create New Program
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
