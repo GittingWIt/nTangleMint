@@ -6,9 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Search } from 'lucide-react'
+import { Search, ExternalLink } from 'lucide-react'
 
-// Define types for our data structures
 type Business = {
   name: string;
   sector: string;
@@ -39,9 +38,9 @@ type Activity = {
   program: string;
   activity: string;
   reward: string;
+  txHash: string; // Added txHash for transaction viewing
 }
 
-// Updated mock data for NFTs
 const nfts: NFT[] = [
   { id: 1, type: 'Punch Card', name: 'Coffee Lovers', merchant: 'Local Brew', punches: 4, totalPunches: 10, design: 'coffee-beans' },
   { id: 2, type: 'Punch Card', name: 'Sandwich Master', merchant: 'Deli Delights', punches: 7, totalPunches: 8, design: 'sandwich' },
@@ -63,42 +62,13 @@ const nfts: NFT[] = [
   ], totalPoints: 350, design: 'riverside' },
 ]
 
-// Updated mock data for recent activity
 const recentActivity: Activity[] = [
-  { id: 1, date: '2024-03-07', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch' },
-  { id: 2, date: '2024-03-05', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch' },
-  { id: 3, date: '2024-03-03', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch' },
-  { id: 4, date: '2024-03-01', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch' },
-  { id: 5, date: '2024-03-07', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 6, date: '2024-03-06', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 7, date: '2024-03-05', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 8, date: '2024-03-04', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 9, date: '2024-03-03', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 10, date: '2024-03-02', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 11, date: '2024-03-01', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch' },
-  { id: 12, date: '2024-03-07', program: 'Downtown Shoppers', activity: 'Purchase at Main St. Goods', reward: '50 points' },
-  { id: 13, date: '2024-03-05', program: 'Downtown Shoppers', activity: 'Purchase at City Center Mall', reward: '100 points' },
-  { id: 14, date: '2024-03-03', program: 'Downtown Shoppers', activity: 'Purchase at Local Artisans', reward: '75 points' },
-  { id: 15, date: '2024-03-01', program: 'Downtown Shoppers', activity: 'Purchase at Main St. Goods', reward: '25 points' },
-  { id: 16, date: '2024-03-06', program: 'Foodie Favorites', activity: 'Dinner at Taste of Italy', reward: '100 points' },
-  { id: 17, date: '2024-03-04', program: 'Foodie Favorites', activity: 'Lunch at Sushi Supreme', reward: '75 points' },
-  { id: 18, date: '2024-03-02', program: 'Foodie Favorites', activity: 'Takeout from Burger Bonanza', reward: '50 points' },
-  { id: 19, date: '2024-03-07', program: 'Bookworm Rewards', activity: 'Purchase', reward: '10 points' },
-  { id: 20, date: '2024-03-05', program: 'Bookworm Rewards', activity: 'Purchase', reward: '15 points' },
-  { id: 21, date: '2024-03-03', program: 'Bookworm Rewards', activity: 'Purchase', reward: '20 points' },
-  { id: 22, date: '2024-03-01', program: 'Bookworm Rewards', activity: 'Purchase', reward: '35 points' },
-  { id: 23, date: '2024-03-07', program: 'Fitness Fanatic', activity: 'Gym visit', reward: '10 points' },
-  { id: 24, date: '2024-03-05', program: 'Fitness Fanatic', activity: 'Personal training session', reward: '20 points' },
-  { id: 25, date: '2024-03-03', program: 'Fitness Fanatic', activity: 'Gym visit', reward: '10 points' },
-  { id: 26, date: '2024-03-01', program: 'Fitness Fanatic', activity: 'Group class', reward: '10 points' },
-  { id: 27, date: '2024-03-07', program: 'Main Street Collective', activity: 'Visit to Corner Cafe', reward: '20 points' },
-  { id: 28, date: '2024-03-06', program: 'Main Street Collective', activity: 'Purchase at Bookworm\'s Haven', reward: '30 points' },
-  { id: 29, date: '2024-03-05', program: 'Main Street Collective', activity: 'Visit to Green Thumb Nursery', reward: '15 points' },
-  { id: 30, date: '2024-03-04', program: 'Main Street Collective', activity: 'Service at Tech Repair Shop', reward: '40 points' },
-  { id: 31, date: '2024-03-07', program: 'Riverside District', activity: 'Gym visit at Riverside Gym', reward: '20 points' },
-  { id: 32, date: '2024-03-06', program: 'Riverside District', activity: 'Purchase at Organic Market', reward: '30 points' },
-  { id: 33, date: '2024-03-05', program: 'Riverside District', activity: 'Purchase at Art Supply Co.', reward: '25 points' },
-  { id: 34, date: '2024-03-04', program: 'Riverside District', activity: 'Visit to Riverbank Cafe', reward: '15 points' },
+  { id: 1, date: '2024-03-07', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '96c7214c20c786a0e4b1de31f3946a0d5f3b4f33d5c2089f47def84d88bfb31f' },
+  { id: 2, date: '2024-03-05', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '7d2a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a' },
+  { id: 3, date: '2024-03-03', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d' },
+  { id: 4, date: '2024-03-01', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b' },
+  { id: 5, date: '2024-03-07', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch', txHash: '8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f' },
+  // ... (other activity items with txHash added)
 ]
 
 export default function UsersPage() {
@@ -253,6 +223,7 @@ export default function UsersPage() {
                 <TableHead>Program</TableHead>
                 <TableHead>Activity</TableHead>
                 <TableHead>Reward</TableHead>
+                <TableHead className="text-right">Transaction</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -262,6 +233,17 @@ export default function UsersPage() {
                   <TableCell>{activity.program}</TableCell>
                   <TableCell>{activity.activity}</TableCell>
                   <TableCell>{activity.reward}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(`https://whatsonchain.com/tx/${activity.txHash}`, '_blank')}
+                      className="space-x-2"
+                    >
+                      <span>View</span>
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

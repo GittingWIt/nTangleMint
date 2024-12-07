@@ -1,7 +1,7 @@
 import '@/styles/globals.css'
 import { useState } from 'react'
 import { AppProps } from 'next/app'
-import { Inter } from "next/font/google"
+import { Inter } from 'next/font/google'
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ThemeProvider } from "next-themes"
@@ -11,7 +11,7 @@ import Layout from '@/components/Layout'
 const inter = Inter({ subsets: ["latin"] })
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  const [accountType, setAccountType] = useState<'merchant' | 'user'>('user')
+  // const [accountType, setAccountType] = useState<'merchant' | 'user'>('user')
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -51,9 +51,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
               <div className="flex items-center space-x-4">
                 <Link href="/create-restore-wallet">
                   <Button variant="outline">Create/Restore Wallet</Button>
-                </Link>
-                <Link href="/LoginSignup">
-                  <Button>Login / Sign Up</Button>
                 </Link>
               </div>
             </nav>
