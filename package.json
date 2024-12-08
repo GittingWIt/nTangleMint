@@ -23,8 +23,11 @@
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.1.4",
+<<<<<<< HEAD
     "@react-three/drei": "^9.119.0",
     "@react-three/fiber": "^8.17.10",
+=======
+>>>>>>> 5445f674305b9b6d5a55fa563884ddee67f6b9bf
     "@shadcn/ui": "^0.0.4",
     "bsv": "^2.0.10",
     "class-variance-authority": "^0.7.0",
@@ -40,7 +43,10 @@
     "recharts": "^2.10.3",
     "tailwind-merge": "^2.1.0",
     "tailwindcss-animate": "^1.0.7",
+<<<<<<< HEAD
     "three": "^0.158.0",
+=======
+>>>>>>> 5445f674305b9b6d5a55fa563884ddee67f6b9bf
     "zod": "^3.23.8"
   },
   "devDependencies": {

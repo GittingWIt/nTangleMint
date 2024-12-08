@@ -5,8 +5,11 @@ import { createNewWallet, restoreWallet } from '../bsvUtilities/bsvWallet';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+<<<<<<< HEAD
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
+=======
+>>>>>>> 5445f674305b9b6d5a55fa563884ddee67f6b9bf
 
 // Define the WalletInfo type
 interface WalletInfo {
