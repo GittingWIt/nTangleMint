@@ -1,20 +1,22 @@
 import '@/styles/globals.css'
-import { useState } from 'react'
 import { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
 import Link from "next/link"
+import Head from 'next/head'
 import { Button } from "@/components/ui/button"
-import { ThemeProvider } from "next-themes"
+import { ThemeProvider as NextThemesProvider } from "next-themes"
 import { cn } from "@/lib/utils"
 import Layout from '@/components/Layout'
 
 const inter = Inter({ subsets: ["latin"] })
 
 export default function MyApp({ Component, pageProps }: AppProps) {
-  // const [accountType, setAccountType] = useState<'merchant' | 'user'>('user')
-
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+    <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
+      <Head>
+        <title>nTangleMint</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </Head>
       <div className={cn("min-h-screen bg-background font-sans antialiased", inter.className)}>
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="container flex h-14 items-center">
@@ -51,12 +53,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
               <div className="flex items-center space-x-4">
                 <Link href="/create-restore-wallet">
                   <Button variant="outline">Create/Restore Wallet</Button>
-<<<<<<< HEAD
-=======
-                </Link>
-                <Link href="/LoginSignup">
-                  <Button>Login / Sign Up</Button>
->>>>>>> 5445f674305b9b6d5a55fa563884ddee67f6b9bf
                 </Link>
               </div>
             </nav>
@@ -68,6 +64,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
           </main>
         </Layout>
       </div>
-    </ThemeProvider>
+    </NextThemesProvider>
   )
 }
