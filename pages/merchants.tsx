@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone } from 'lucide-react'
+import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone, ChevronUp, ChevronDown, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -33,12 +33,23 @@ type Program = {
   growthRate: number
 }
 
-// Define the type for chart data points
 interface ChartDataPoint {
   name: string
   participants?: number
   rewards?: number
-  [key: string]: string | number | undefined // Allow dynamic program-specific fields
+  [key: string]: string | number | undefined
+}
+
+interface Customer {
+  walletAddress: string
+  program: string
+  points: number
+  status: string
+}
+
+type SortConfig = {
+  key: keyof Customer
+  direction: 'ascending' | 'descending'
 }
 
 const programs: Program[] = [
@@ -65,7 +76,6 @@ const programs: Program[] = [
   }
 ]
 
-// Update the return type of generateChartData
 const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: string[] = []): ChartDataPoint[] => {
   const daysDifference = differenceInDays(endDate, startDate)
   const useDaily = daysDifference <= 31
@@ -78,7 +88,6 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
       name: useDaily ? format(date, 'MMM dd') : format(date, 'MMM yyyy'),
     }
 
-    // If no programs are selected, show total numbers
     const programsToShow = selectedPrograms.length === 0 ? programs : programs.filter(p => selectedPrograms.includes(p.name))
 
     programsToShow.forEach(program => {
@@ -107,26 +116,71 @@ export default function Component() {
   const [isCustomRangeOpen, setIsCustomRangeOpen] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([])
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
+  const [customerSortConfig, setCustomerSortConfig] = useState<SortConfig | null>(null)
+  const [selectedCustomerProgram, setSelectedCustomerProgram] = useState<string | null>(null)
 
-  // Handle program selection
+  // Mock customer data with BSV addresses
+  const customers: Customer[] = [
+    { walletAddress: "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2", program: "Coffee Lovers", points: 1250, status: "Active" },
+    { walletAddress: "1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", program: "Sandwich Master", points: 980, status: "Active" },
+    { walletAddress: "1Lbcfr7sAHTD9CgdQo3HTR4rf7xzv7sj4u", program: "Book Club Rewards", points: 875, status: "Inactive" },
+  ]
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(customer =>
+      (customer.walletAddress.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+       customer.program.toLowerCase().includes(customerSearchTerm.toLowerCase()) ||
+       customer.status.toLowerCase().includes(customerSearchTerm.toLowerCase())) &&
+      (!selectedCustomerProgram || customer.program === selectedCustomerProgram)
+    )
+  }, [customers, customerSearchTerm, selectedCustomerProgram])
+
+  const sortedCustomers = useMemo(() => {
+    if (!customerSortConfig) return filteredCustomers
+    return [...filteredCustomers].sort((a, b) => {
+      if (a[customerSortConfig.key] < b[customerSortConfig.key]) {
+        return customerSortConfig.direction === 'ascending' ? -1 : 1
+      }
+      if (a[customerSortConfig.key] > b[customerSortConfig.key]) {
+        return customerSortConfig.direction === 'ascending' ? 1 : -1
+      }
+      return 0
+    })
+  }, [filteredCustomers, customerSortConfig])
+
+  const requestSort = (key: keyof Customer) => {
+    let direction: 'ascending' | 'descending' = 'ascending'
+    if (customerSortConfig && customerSortConfig.key === key && customerSortConfig.direction === 'ascending') {
+      direction = 'descending'
+    }
+    setCustomerSortConfig({ key, direction })
+  }
+
   const handleProgramClick = (programName: string, event: React.MouseEvent) => {
     event.preventDefault()
     setSelectedPrograms(prev => {
       if (event.ctrlKey || event.metaKey) {
-        // Toggle selection when Ctrl/Cmd is pressed
         return prev.includes(programName)
           ? prev.filter(p => p !== programName)
           : [...prev, programName]
       } else {
-        // Single selection when Ctrl/Cmd is not pressed
         return prev.includes(programName) && prev.length === 1
-          ? [] // Deselect if it's the only selected program
-          : [programName] // Select only this program
+          ? []
+          : [programName]
       }
     })
   }
 
-  // Update chart data when timeframe, date range, or selected programs change
+  const handleViewAllCustomers = () => {
+    setCustomerSearchTerm('')
+    // Keep the selected program filter
+  }
+
+  const handleClearProgramFilter = () => {
+    setSelectedCustomerProgram(null)
+  }
+
   useEffect(() => {
     let start: Date
     let end: Date = new Date()
@@ -160,11 +214,9 @@ export default function Component() {
     setChartData(newData)
   }, [selectedTimeframe, dateRange, selectedPrograms])
 
-  // Update the handleCustomRangeSelect function to match the Calendar's expected type
   const handleCustomRangeSelect: SelectRangeEventHandler = (range) => {
     setDateRange(range)
     
-    // Only update timeframe and close dialog when both dates are selected
     if (range?.from && range?.to) {
       setSelectedTimeframe('custom')
       setIsCustomRangeOpen(false)
@@ -178,7 +230,6 @@ export default function Component() {
     setIsCustomRangeOpen(open)
   }
 
-  // Generate chart lines based on selected programs
   const generateChartLines = () => {
     if (selectedPrograms.length === 0) {
       return [
@@ -441,40 +492,73 @@ export default function Component() {
               <div className="flex justify-between items-center mb-4">
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search customers" className="pl-8" />
+                  <Input 
+                    placeholder="Search customers" 
+                    className="pl-8" 
+                    value={customerSearchTerm}
+                    onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                  />
                 </div>
-                <Select defaultValue="all">
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Filter by program" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Programs</SelectItem>
-                    <SelectItem value="coffee">Coffee Lovers</SelectItem>
-                    <SelectItem value="sandwich">Sandwich Master</SelectItem>
-                    <SelectItem value="book">Book Club Rewards</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center space-x-2">
+                  <Select 
+                    value={selectedCustomerProgram || 'all'} 
+                    onValueChange={(value) => setSelectedCustomerProgram(value === 'all' ? null : value)}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter by program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      <SelectItem value="Coffee Lovers">Coffee Lovers</SelectItem>
+                      <SelectItem value="Sandwich Master">Sandwich Master</SelectItem>
+                      <SelectItem value="Book Club Rewards">Book Club Rewards</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedCustomerProgram && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={handleClearProgramFilter}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Points</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead onClick={() => requestSort('walletAddress')} className="cursor-pointer">
+                      Wallet Address
+                      {customerSortConfig?.key === 'walletAddress' && (
+                        customerSortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                      )}
+                    </TableHead>
+                    <TableHead onClick={() => requestSort('program')} className="cursor-pointer">
+                      Program
+                      {customerSortConfig?.key === 'program' && (
+                        customerSortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                      )}
+                    </TableHead>
+                    <TableHead onClick={() => requestSort('points')} className="cursor-pointer">
+                      Points
+                      {customerSortConfig?.key === 'points' && (
+                        customerSortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                      )}
+                    </TableHead>
+                    <TableHead onClick={() => requestSort('status')} className="cursor-pointer">
+                      Status
+                      {customerSortConfig?.key === 'status' && (
+                        customerSortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                      )}
+                    </TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[
-                    { name: "Alice Johnson", email: "alice@example.com", program: "Coffee Lovers", points: 1250, status: "Active" },
-                    { name: "Bob Smith", email: "bob@example.com", program: "Sandwich Master", points: 980, status: "Active" },
-                    { name: "Carol Williams", email: "carol@example.com", program: "Book Club Rewards", points: 875, status: "Inactive" },
-                  ].map((customer, index) => (
+                  {sortedCustomers.map((customer, index) => (
                     <TableRow key={index}>
-                      <TableCell>{customer.name}</TableCell>
-                      <TableCell>{customer.email}</TableCell>
+                      <TableCell>{customer.walletAddress}</TableCell>
                       <TableCell>{customer.program}</TableCell>
                       <TableCell>{customer.points}</TableCell>
                       <TableCell>
@@ -498,7 +582,9 @@ export default function Component() {
               </Table>
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full">View All Customers</Button>
+              <Button variant="outline" className="w-full" onClick={handleViewAllCustomers}>
+                View All Customers
+              </Button>
             </CardFooter>
           </Card>
         </TabsContent>

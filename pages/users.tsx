@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useMemo } from 'react'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -6,75 +8,91 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Search, ExternalLink } from 'lucide-react'
-
-type Business = {
-  name: string;
-  sector: string;
-  visits?: number;
-  purchases?: number;
-}
+import { Search, ExternalLink, ChevronUp, ChevronDown } from 'lucide-react'
 
 type NFT = {
-  id: number;
-  type: 'Punch Card' | 'Coalition' | 'Tiered' | 'Local';
-  name: string;
-  merchant?: string;
-  punches?: number;
-  totalPunches?: number;
-  merchants?: string[];
-  points?: number;
-  tier?: string;
-  nextTier?: string;
-  nextTierPoints?: number;
-  businesses?: Business[];
-  totalPoints?: number;
-  design: string;
+  id: number
+  name: string
+  type: string
+  merchant?: string
+  tier?: string
+  merchants?: string[]
+  businesses?: { name: string; sector: string }[]
+  image: string
 }
 
-type Activity = {
-  id: number;
-  date: string;
-  program: string;
-  activity: string;
-  reward: string;
-  txHash: string; // Added txHash for transaction viewing
+interface Activity {
+  id: number
+  date: string
+  program: string
+  activity: string
+  reward: string
+  txHash: string
+  [key: string]: string | number // Add index signature for dynamic access
+}
+
+// Define the type for sort configuration
+interface SortConfig {
+  key: keyof Activity
+  direction: 'ascending' | 'descending'
 }
 
 const nfts: NFT[] = [
-  { id: 1, type: 'Punch Card', name: 'Coffee Lovers', merchant: 'Local Brew', punches: 4, totalPunches: 10, design: 'coffee-beans' },
-  { id: 2, type: 'Punch Card', name: 'Sandwich Master', merchant: 'Deli Delights', punches: 7, totalPunches: 8, design: 'sandwich' },
-  { id: 3, type: 'Coalition', name: 'Downtown Shoppers', merchants: ['Main St. Goods', 'City Center Mall', 'Local Artisans'], points: 750, design: 'cityscape' },
-  { id: 4, type: 'Coalition', name: 'Foodie Favorites', merchants: ['Taste of Italy', 'Sushi Supreme', 'Burger Bonanza'], points: 500, design: 'cutlery' },
-  { id: 5, type: 'Tiered', name: 'Bookworm Rewards', merchant: 'City Books', tier: 'Silver', points: 80, nextTier: 'Gold', nextTierPoints: 100, design: 'book' },
-  { id: 6, type: 'Tiered', name: 'Fitness Fanatic', merchant: 'GymZone', tier: 'Bronze', points: 50, nextTier: 'Silver', nextTierPoints: 75, design: 'dumbbell' },
-  { id: 7, type: 'Local', name: 'Main Street Collective', businesses: [
-    { name: 'Corner Cafe', sector: 'Food & Beverage', visits: 10 },
-    { name: 'Bookworm\'s Haven', sector: 'Retail', purchases: 3 },
-    { name: 'Green Thumb Nursery', sector: 'Garden', visits: 5 },
-    { name: 'Tech Repair Shop', sector: 'Services', purchases: 2 }
-  ], totalPoints: 200, design: 'main-street' },
-  { id: 8, type: 'Local', name: 'Riverside District', businesses: [
-    { name: 'Riverside Gym', sector: 'Fitness', visits: 15 },
-    { name: 'Organic Market', sector: 'Grocery', purchases: 8 },
-    { name: 'Art Supply Co.', sector: 'Retail', purchases: 4 },
-    { name: 'Riverbank Cafe', sector: 'Food & Beverage', visits: 12 }
-  ], totalPoints: 350, design: 'riverside' },
+  {
+    id: 1,
+    name: "Coffee Lovers",
+    type: "Punch Card",
+    merchant: "Brew Haven",
+    image: "/placeholder.svg?height=100&width=100"
+  },
+  {
+    id: 2,
+    name: "Sandwich Master",
+    type: "Punch Card",
+    merchant: "Deli Delights",
+    image: "/placeholder.svg?height=100&width=100"
+  },
+  {
+    id: 3,
+    name: "Book Worm",
+    type: "Tiered",
+    tier: "Gold",
+    merchant: "Page Turner Books",
+    image: "/placeholder.svg?height=100&width=100"
+  },
+  {
+    id: 4,
+    name: "City Explorer",
+    type: "Coalition",
+    merchants: ["Museum of History", "Art Gallery", "Science Center"],
+    image: "/placeholder.svg?height=100&width=100"
+  },
+  {
+    id: 5,
+    name: "Local Eats",
+    type: "Local",
+    businesses: [
+      { name: "Joe's Pizza", sector: "Restaurant" },
+      { name: "Green Grocer", sector: "Grocery" },
+      { name: "Sweet Tooth Bakery", sector: "Bakery" }
+    ],
+    image: "/placeholder.svg?height=100&width=100"
+  }
 ]
 
 const recentActivity: Activity[] = [
-  { id: 1, date: '2024-03-07', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '96c7214c20c786a0e4b1de31f3946a0d5f3b4f33d5c2089f47def84d88bfb31f' },
-  { id: 2, date: '2024-03-05', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '7d2a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a' },
-  { id: 3, date: '2024-03-03', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d' },
-  { id: 4, date: '2024-03-01', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b' },
-  { id: 5, date: '2024-03-07', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch', txHash: '8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f2b1d4a6c8e4f1b3d5a9c8e7f' },
-  // ... (other activity items with txHash added)
+  { id: 1, date: '2024-03-07', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' },
+  { id: 2, date: '2024-03-05', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy' },
+  { id: 3, date: '2024-03-03', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1Lbcfr7sAHTD9CgdQo3HTR4rf7xzv7sj4u' },
+  { id: 4, date: '2024-03-01', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' },
+  { id: 5, date: '2024-03-07', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch', txHash: '1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy' },
 ]
 
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null)
   const [activeTab, setActiveTab] = useState('all')
+  const [activitySortConfig, setActivitySortConfig] = useState<SortConfig | null>(null)
 
   const filteredNFTs = useMemo(() => {
     return nfts.filter(nft => {
@@ -99,76 +117,61 @@ export default function UsersPage() {
     ? recentActivity.filter(activity => activity.program === selectedNFT.name)
     : recentActivity
 
-  const renderNFT = (nft: NFT) => {
-    let content: JSX.Element
-    switch (nft.type) {
-      case 'Punch Card':
-        content = (
-          <>
-            <div className="text-lg font-semibold">{nft.name}</div>
-            <div>{nft.merchant}</div>
-            <div className="mt-2 flex space-x-1">
-              {Array.from({ length: nft.totalPunches || 0 }).map((_, i) => (
-                <div key={i} className={`w-4 h-4 rounded-full ${i < (nft.punches || 0) ? 'bg-primary' : 'bg-gray-300'}`} />
-              ))}
-            </div>
-          </>
-        )
-        break
-      case 'Coalition':
-        content = (
-          <>
-            <div className="text-lg font-semibold">{nft.name}</div>
-            <div className="text-sm">{nft.merchants?.join(', ')}</div>
-            <div className="mt-2">Points: {nft.points}</div>
-          </>
-        )
-        break
-      case 'Tiered':
-        content = (
-          <>
-            <div className="text-lg font-semibold">{nft.name}</div>
-            <div>{nft.merchant}</div>
-            <Badge className={`mt-2 ${nft.tier === 'Gold' ? 'bg-yellow-500' : nft.tier === 'Silver' ? 'bg-gray-400' : 'bg-orange-600'}`}>
-              {nft.tier} Tier
-            </Badge>
-            <div className="mt-2">
-              {nft.points} / {nft.nextTierPoints} points to {nft.nextTier}
-            </div>
-          </>
-        )
-        break
-      case 'Local':
-        content = (
-          <>
-            <div className="text-lg font-semibold">{nft.name}</div>
-            <div className="text-sm mb-2">Total Points: {nft.totalPoints}</div>
-            <div className="space-y-1">
-              {nft.businesses?.map((business, index) => (
-                <div key={index} className="text-xs">
-                  {business.name} ({business.sector}): {business.visits ? `${business.visits} visits` : `${business.purchases} purchases`}
-                </div>
-              ))}
-            </div>
-          </>
-        )
-        break
-    }
+  const sortedActivity = useMemo(() => {
+    if (!activitySortConfig) return filteredActivity
+    return [...filteredActivity].sort((a, b) => {
+      if (a[activitySortConfig.key] < b[activitySortConfig.key]) {
+        return activitySortConfig.direction === 'ascending' ? -1 : 1
+      }
+      if (a[activitySortConfig.key] > b[activitySortConfig.key]) {
+        return activitySortConfig.direction === 'ascending' ? 1 : -1
+      }
+      return 0
+    })
+  }, [filteredActivity, activitySortConfig])
 
+  const requestSort = (key: keyof Activity) => {
+    let direction: 'ascending' | 'descending' = 'ascending'
+    if (activitySortConfig && activitySortConfig.key === key && activitySortConfig.direction === 'ascending') {
+      direction = 'descending'
+    }
+    setActivitySortConfig({ key, direction })
+  }
+
+  const renderNFT = (nft: NFT) => {
     return (
-      <Card 
-        key={nft.id} 
-        className="w-64 h-64 flex flex-col justify-between cursor-pointer hover:shadow-lg transition-shadow"
-        onClick={() => setSelectedNFT(nft)}
-      >
+      <Card key={nft.id} className="w-[250px] flex flex-col">
         <CardHeader>
-          <CardTitle>{nft.type}</CardTitle>
+          <img src={nft.image} alt={nft.name} className="w-full h-32 object-cover rounded-t-lg" />
         </CardHeader>
-        <CardContent>
-          {content}
+        <CardContent className="flex-grow">
+          <CardTitle>{nft.name}</CardTitle>
+          <CardDescription>{nft.type}</CardDescription>
+          {nft.merchant && <p className="text-sm mt-2">Merchant: {nft.merchant}</p>}
+          {nft.tier && <p className="text-sm mt-2">Tier: {nft.tier}</p>}
+          {nft.merchants && (
+            <div className="mt-2">
+              <p className="text-sm font-semibold">Participating Merchants:</p>
+              <ul className="text-sm list-disc list-inside">
+                {nft.merchants.map((merchant, index) => (
+                  <li key={index}>{merchant}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {nft.businesses && (
+            <div className="mt-2">
+              <p className="text-sm font-semibold">Participating Businesses:</p>
+              <ul className="text-sm list-disc list-inside">
+                {nft.businesses.map((business, index) => (
+                  <li key={index}>{business.name} ({business.sector})</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </CardContent>
-        <CardFooter className="text-sm text-gray-500">
-          Click to view activity
+        <CardFooter>
+          <Button className="w-full" onClick={() => setSelectedNFT(nft)}>View Activity</Button>
         </CardFooter>
       </Card>
     )
@@ -219,15 +222,35 @@ export default function UsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Program</TableHead>
-                <TableHead>Activity</TableHead>
-                <TableHead>Reward</TableHead>
+                <TableHead onClick={() => requestSort('date')} className="cursor-pointer">
+                  Date
+                  {activitySortConfig?.key === 'date' && (
+                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('program')} className="cursor-pointer">
+                  Program
+                  {activitySortConfig?.key === 'program' && (
+                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('activity')} className="cursor-pointer">
+                  Activity
+                  {activitySortConfig?.key === 'activity' && (
+                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                  )}
+                </TableHead>
+                <TableHead onClick={() => requestSort('reward')} className="cursor-pointer">
+                  Reward
+                  {activitySortConfig?.key === 'reward' && (
+                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
+                  )}
+                </TableHead>
                 <TableHead className="text-right">Transaction</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredActivity.map((activity) => (
+              {sortedActivity.map((activity) => (
                 <TableRow key={activity.id}>
                   <TableCell>{activity.date}</TableCell>
                   <TableCell>{activity.program}</TableCell>

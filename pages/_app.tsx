@@ -8,7 +8,11 @@ import { ThemeProvider as NextThemesProvider } from "next-themes"
 import { cn } from "@/lib/utils"
 import Layout from '@/components/Layout'
 
-const inter = Inter({ subsets: ["latin"] })
+// Configure Inter font with display option to prevent FOUT
+const inter = Inter({ 
+  subsets: ["latin"],
+  display: 'swap', // Add display swap to prevent font loading issues
+})
 
 export default function MyApp({ Component, pageProps }: AppProps) {
   return (
@@ -25,12 +29,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
             </Link>
             <nav className="flex flex-1 items-center justify-between space-x-6 text-sm font-medium">
               <div className="flex gap-6">
-                <Link
-                  href="/"
-                  className="transition-colors hover:text-foreground/80 text-foreground"
-                >
-                  Home
-                </Link>
                 <Link
                   href="/about"
                   className="transition-colors hover:text-foreground/80 text-foreground"
