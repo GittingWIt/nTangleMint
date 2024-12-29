@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone, ChevronUp, ChevronDown, X } from 'lucide-react'
+import { useRouter } from 'next/router'
+import { ArrowRight, Users, Gift, TrendingUp, Settings, Calendar, Search, Edit, Trash2, Bell, Mail, Smartphone, ChevronUp, ChevronDown, X, Copy, Check } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,20 +18,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { addDays, subMonths, format, eachDayOfInterval, eachMonthOfInterval, startOfDay, endOfDay, isBefore, differenceInDays } from 'date-fns'
 import { DateRange, SelectRangeEventHandler } from "react-day-picker"
+import { WalletData, Program } from '@/lib/wallet-types'
+import { getWalletData, saveWalletData, shortenAddress } from '@/lib/wallet-utils'
 
 // Define program colors for consistent styling
 const programColors = {
   'Coffee Lovers': '#8884d8',
   'Sandwich Master': '#82ca9d',
   'Book Club Rewards': '#ffc658'
-}
-
-type Program = {
-  name: string
-  completionRate: number
-  baseParticipants: number
-  baseRewards: number
-  growthRate: number
 }
 
 interface ChartDataPoint {
@@ -107,7 +102,8 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
   })
 }
 
-export default function Component() {
+export default function MerchantPage() {
+  const router = useRouter()
   const [activePrograms, setActivePrograms] = useState(3)
   const [totalParticipants, setTotalParticipants] = useState(234)
   const [rewardsClaimed, setRewardsClaimed] = useState(45)
@@ -119,6 +115,8 @@ export default function Component() {
   const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [customerSortConfig, setCustomerSortConfig] = useState<SortConfig | null>(null)
   const [selectedCustomerProgram, setSelectedCustomerProgram] = useState<string | null>(null)
+  const [walletData, setWalletData] = useState<WalletData | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Mock customer data with BSV addresses
   const customers: Customer[] = [
@@ -126,6 +124,15 @@ export default function Component() {
     { walletAddress: "1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy", program: "Sandwich Master", points: 980, status: "Active" },
     { walletAddress: "1Lbcfr7sAHTD9CgdQo3HTR4rf7xzv7sj4u", program: "Book Club Rewards", points: 875, status: "Inactive" },
   ]
+
+  useEffect(() => {
+    const data = getWalletData()
+    if (data && data.type === 'merchant') {
+      setWalletData(data)
+    } else {
+      router.push('/')
+    }
+  }, [router])
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(customer =>
@@ -279,16 +286,46 @@ export default function Component() {
     return lines
   }
 
+  const copyAddress = async () => {
+    if (!walletData?.publicAddress) return
+    
+    try {
+      await navigator.clipboard.writeText(walletData.publicAddress)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy address')
+    }
+  }
+
+  if (!walletData) {
+    return <div>Loading...</div>
+  }
+
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Merchant Dashboard</h1>
-        <Button asChild>
-          <Link href="/create-program">
-            Create New Program
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={copyAddress}
+          >
+            {shortenAddress(walletData.publicAddress)}
+            {copied ? (
+              <Check className="h-4 w-4 text-green-500" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+          <Button asChild>
+            <Link href="/create-program">
+              Create New Program
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
