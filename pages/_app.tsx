@@ -1,6 +1,4 @@
-'use client'
-
-import { useEffect, useState } from 'react'
+import * as React from 'react'
 import '@/styles/globals.css'
 import { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
@@ -30,34 +28,26 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Copy, LogOut } from 'lucide-react'
 
-// Configure Inter font with display option to prevent FOUT
 const inter = Inter({ 
   subsets: ["latin"],
   display: 'swap',
 })
 
-export default function MyApp({ Component, pageProps }: AppProps) {
-  const [walletData, setWalletData] = useState<ReturnType<typeof getWalletData>>(null)
-  const [showLogoutDialog, setShowLogoutDialog] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [mounted, setMounted] = useState(false)
+export default function App({ Component, pageProps }: AppProps) {
+  const [walletData, setWalletData] = React.useState<ReturnType<typeof getWalletData>>(null)
+  const [showLogoutDialog, setShowLogoutDialog] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
 
-  useEffect(() => {
-    setMounted(true)
-    // Set up storage event listener
+  React.useEffect(() => {
     const handleStorageChange = () => {
       const data = getWalletData()
       setWalletData(data)
     }
     
-    // Initial wallet data fetch
     const data = getWalletData()
     setWalletData(data)
 
-    // Listen for storage changes
     window.addEventListener('storage', handleStorageChange)
-    
-    // Custom event listener for wallet updates
     window.addEventListener('walletUpdated', handleStorageChange)
 
     return () => {
@@ -65,32 +55,6 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       window.removeEventListener('walletUpdated', handleStorageChange)
     }
   }, [])
-
-  // Avoid hydration mismatch by not rendering wallet-dependent UI until mounted
-  if (!mounted) {
-    return (
-      <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
-        <Head>
-          <title>nTangleMint</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-        </Head>
-        <div className={cn("min-h-screen bg-background font-sans antialiased", inter.className)}>
-          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-14 items-center">
-              <Link href="/" className="mr-6 flex items-center space-x-2">
-                <span className="font-bold">nTangleMint</span>
-              </Link>
-            </div>
-          </header>
-          <Layout>
-            <main className="container py-6">
-              <Component {...pageProps} />
-            </main>
-          </Layout>
-        </div>
-      </NextThemesProvider>
-    )
-  }
 
   const handleCopyAddress = async () => {
     if (!walletData) return
@@ -129,18 +93,14 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                 >
                   About
                 </Link>
-                <Link
-                  href="/merchant"
-                  className="transition-colors hover:text-foreground/80 text-foreground"
-                >
-                  Merchant
-                </Link>
-                <Link
-                  href="/user"
-                  className="transition-colors hover:text-foreground/80 text-foreground"
-                >
-                  User
-                </Link>
+                {walletData && (
+                  <Link
+                    href={walletData.type === 'merchant' ? '/merchants' : '/user'}
+                    className="transition-colors hover:text-foreground/80 text-foreground"
+                  >
+                    Dashboard
+                  </Link>
+                )}
               </div>
               <div className="flex items-center space-x-4">
                 {walletData ? (
@@ -151,7 +111,12 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handleCopyAddress}>
+                      <DropdownMenuItem 
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          handleCopyAddress()
+                        }}
+                      >
                         <Copy className="mr-2 h-4 w-4" />
                         {copied ? 'Copied!' : 'Copy Address'}
                       </DropdownMenuItem>
@@ -174,7 +139,9 @@ export default function MyApp({ Component, pageProps }: AppProps) {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleLogout}>Logout</AlertDialogAction>
+                            <AlertDialogAction onClick={handleLogout} className="bg-black hover:bg-black/90">
+                              Logout
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>

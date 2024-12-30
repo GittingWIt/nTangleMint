@@ -1,103 +1,101 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import * as React from 'react'
 import { useRouter } from 'next/router'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, ExternalLink, ChevronUp, ChevronDown } from 'lucide-react'
-import { WalletData, Transaction } from '@/lib/wallet-types'
+import { Badge } from "@/components/ui/badge"
+import { Search, ExternalLink, Gift, Trophy, Users } from 'lucide-react'
+import { WalletData } from '@/lib/wallet-types'
 import { getWalletData } from '@/lib/wallet-utils'
 
-type NFT = {
+interface NFTProgram {
   id: number
   name: string
   type: string
-  merchant?: string
-  tier?: string
-  merchants?: string[]
-  businesses?: { name: string; sector: string }[]
+  merchant: string
+  participants: number
+  progress: {
+    current: number
+    total: number
+    description: string
+  }
+  rewards: {
+    earned: number
+    available: number
+  }
+  status: 'Active' | 'Completed' | 'Inactive'
   image: string
 }
 
-interface Activity {
-  id: number
-  date: string
-  program: string
-  activity: string
-  reward: string
-  txHash: string
-  [key: string]: string | number
-}
-
-interface SortConfig {
-  key: keyof Activity
-  direction: 'ascending' | 'descending'
-}
-
-const nfts: NFT[] = [
+const programs: NFTProgram[] = [
   {
     id: 1,
     name: "Coffee Lovers",
     type: "Punch Card",
     merchant: "Brew Haven",
-    image: "/placeholder.svg?height=100&width=100"
+    participants: 1500,
+    progress: {
+      current: 7,
+      total: 10,
+      description: "7/10 punches"
+    },
+    rewards: {
+      earned: 3,
+      available: 1
+    },
+    status: "Active",
+    image: "/placeholder.svg?height=400&width=400"
   },
   {
     id: 2,
-    name: "Sandwich Master",
-    type: "Punch Card",
-    merchant: "Deli Delights",
-    image: "/placeholder.svg?height=100&width=100"
+    name: "Bookworm Rewards",
+    type: "Points",
+    merchant: "Page Turner Books",
+    participants: 800,
+    progress: {
+      current: 850,
+      total: 1000,
+      description: "850/1000 points to next tier"
+    },
+    rewards: {
+      earned: 5,
+      available: 2
+    },
+    status: "Active",
+    image: "/placeholder.svg?height=400&width=400"
   },
   {
     id: 3,
-    name: "Book Worm",
+    name: "Fitness First",
     type: "Tiered",
-    tier: "Gold",
-    merchant: "Page Turner Books",
-    image: "/placeholder.svg?height=100&width=100"
-  },
-  {
-    id: 4,
-    name: "City Explorer",
-    type: "Coalition",
-    merchants: ["Museum of History", "Art Gallery", "Science Center"],
-    image: "/placeholder.svg?height=100&width=100"
-  },
-  {
-    id: 5,
-    name: "Local Eats",
-    type: "Local",
-    businesses: [
-      { name: "Joe's Pizza", sector: "Restaurant" },
-      { name: "Green Grocer", sector: "Grocery" },
-      { name: "Sweet Tooth Bakery", sector: "Bakery" }
-    ],
-    image: "/placeholder.svg?height=100&width=100"
+    merchant: "Elite Gym",
+    participants: 650,
+    progress: {
+      current: 2,
+      total: 4,
+      description: "Silver Tier"
+    },
+    rewards: {
+      earned: 1,
+      available: 0
+    },
+    status: "Active",
+    image: "/placeholder.svg?height=400&width=400"
   }
 ]
 
-const recentActivity: Activity[] = [
-  { id: 1, date: '2024-03-07', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' },
-  { id: 2, date: '2024-03-05', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy' },
-  { id: 3, date: '2024-03-03', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1Lbcfr7sAHTD9CgdQo3HTR4rf7xzv7sj4u' },
-  { id: 4, date: '2024-03-01', program: 'Coffee Lovers', activity: 'Purchase', reward: '1 punch', txHash: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' },
-  { id: 5, date: '2024-03-07', program: 'Sandwich Master', activity: 'Purchase', reward: '1 punch', txHash: '1J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy' },
-]
-
-export default function UsersPage() {
+export default function UserDashboard() {
   const router = useRouter()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null)
-  const [activeTab, setActiveTab] = useState('all')
-  const [activitySortConfig, setActivitySortConfig] = useState<SortConfig | null>(null)
-  const [walletData, setWalletData] = useState<WalletData | null>(null)
+  const [searchTerm, setSearchTerm] = React.useState('')
+  const [activeTab, setActiveTab] = React.useState('all')
+  const [walletData, setWalletData] = React.useState<WalletData | null>(null)
 
-  useEffect(() => {
+  React.useEffect(() => {
     const data = getWalletData()
     if (data && data.type === 'user') {
       setWalletData(data)
@@ -106,189 +104,155 @@ export default function UsersPage() {
     }
   }, [router])
 
-  const filteredNFTs = useMemo(() => {
-    return nfts.filter(nft => {
+  const filteredPrograms = React.useMemo(() => {
+    return programs.filter(program => {
       const searchLower = searchTerm.toLowerCase()
       return (
-        nft.name.toLowerCase().includes(searchLower) ||
-        nft.type.toLowerCase().includes(searchLower) ||
-        nft.merchant?.toLowerCase().includes(searchLower) ||
-        nft.tier?.toLowerCase().includes(searchLower) ||
-        nft.merchants?.some(m => m.toLowerCase().includes(searchLower)) ||
-        nft.businesses?.some(b => 
-          b.name.toLowerCase().includes(searchLower) || 
-          b.sector.toLowerCase().includes(searchLower)
-        ) ||
-        (nft.type === 'Punch Card' && 'punch card'.includes(searchLower)) ||
-        (nft.type === 'Tiered' && nft.tier?.toLowerCase().includes(searchLower))
+        program.name.toLowerCase().includes(searchLower) ||
+        program.type.toLowerCase().includes(searchLower) ||
+        program.merchant.toLowerCase().includes(searchLower)
       )
-    }).filter(nft => activeTab === 'all' || nft.type.toLowerCase().replace(' ', '-') === activeTab)
+    }).filter(program => activeTab === 'all' || program.type.toLowerCase().replace(' ', '-') === activeTab.toLowerCase())
   }, [searchTerm, activeTab])
 
-  const filteredActivity = selectedNFT
-    ? recentActivity.filter(activity => activity.program === selectedNFT.name)
-    : recentActivity
-
-  const sortedActivity = useMemo(() => {
-    if (!activitySortConfig) return filteredActivity
-    return [...filteredActivity].sort((a, b) => {
-      if (a[activitySortConfig.key] < b[activitySortConfig.key]) {
-        return activitySortConfig.direction === 'ascending' ? -1 : 1
-      }
-      if (a[activitySortConfig.key] > b[activitySortConfig.key]) {
-        return activitySortConfig.direction === 'ascending' ? 1 : -1
-      }
-      return 0
-    })
-  }, [filteredActivity, activitySortConfig])
-
-  const requestSort = (key: keyof Activity) => {
-    let direction: 'ascending' | 'descending' = 'ascending'
-    if (activitySortConfig && activitySortConfig.key === key && activitySortConfig.direction === 'ascending') {
-      direction = 'descending'
-    }
-    setActivitySortConfig({ key, direction })
-  }
-
-  const renderNFT = (nft: NFT) => {
+  if (!walletData) {
     return (
-      <Card key={nft.id} className="w-[250px] flex flex-col">
-        <CardHeader>
-          <img src={nft.image} alt={nft.name} className="w-full h-32 object-cover rounded-t-lg" />
-        </CardHeader>
-        <CardContent className="flex-grow">
-          <CardTitle>{nft.name}</CardTitle>
-          <CardDescription>{nft.type}</CardDescription>
-          {nft.merchant && <p className="text-sm mt-2">Merchant: {nft.merchant}</p>}
-          {nft.tier && <p className="text-sm mt-2">Tier: {nft.tier}</p>}
-          {nft.merchants && (
-            <div className="mt-2">
-              <p className="text-sm font-semibold">Participating Merchants:</p>
-              <ul className="text-sm list-disc list-inside">
-                {nft.merchants.map((merchant, index) => (
-                  <li key={index}>{merchant}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {nft.businesses && (
-            <div className="mt-2">
-              <p className="text-sm font-semibold">Participating Businesses:</p>
-              <ul className="text-sm list-disc list-inside">
-                {nft.businesses.map((business, index) => (
-                  <li key={index}>{business.name} ({business.sector})</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-        <CardFooter>
-          <Button className="w-full" onClick={() => setSelectedNFT(nft)}>View Activity</Button>
-        </CardFooter>
-      </Card>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center space-y-4">
+          <h2 className="text-2xl font-bold">Loading...</h2>
+          <p className="text-muted-foreground">Please wait while we load your dashboard</p>
+        </div>
+      </div>
     )
   }
 
-  if (!walletData) {
-    return <div>Loading...</div>
-  }
-
   return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6">Your Loyalty Programs</h1>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Your NFT Collection</h1>
+          <p className="text-muted-foreground">Manage your loyalty program NFTs</p>
+        </div>
+      </div>
       
-      <div className="mb-4 relative">
-        <Input
-          type="text"
-          placeholder="Search programs, types, tiers, merchants..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-        />
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            type="text"
+            placeholder="Search programs, merchants..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="punch-card">Punch Card</TabsTrigger>
-          <TabsTrigger value="coalition">Coalition</TabsTrigger>
-          <TabsTrigger value="tiered">Tiered</TabsTrigger>
-          <TabsTrigger value="local">Local</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="bg-slate-100">
+          <TabsTrigger 
+            value="all"
+            className="data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+          >
+            All NFTs
+          </TabsTrigger>
+          <TabsTrigger 
+            value="punch-card"
+            className="data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+          >
+            Punch Cards
+          </TabsTrigger>
+          <TabsTrigger 
+            value="points"
+            className="data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+          >
+            Points
+          </TabsTrigger>
+          <TabsTrigger 
+            value="tiered"
+            className="data-[state=active]:bg-slate-900 data-[state=active]:text-white"
+          >
+            Tiered
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value={activeTab}>
-          <ScrollArea className="w-full whitespace-nowrap rounded-md border">
-            <div className="flex w-max space-x-4 p-4">
-              {filteredNFTs.map(renderNFT)}
+        <TabsContent value={activeTab} className="mt-6">
+          <ScrollArea className="w-full rounded-lg">
+            <div className="flex gap-6 pb-4">
+              {filteredPrograms.map((program) => (
+                <Card key={program.id} className="w-[300px] flex flex-col">
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <CardTitle>{program.name}</CardTitle>
+                        <CardDescription>{program.merchant}</CardDescription>
+                      </div>
+                      <Badge 
+                        variant={program.status === 'Active' ? 'default' : 'secondary'}
+                        className={program.status === 'Active' ? 'bg-slate-900' : ''}
+                      >
+                        {program.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="aspect-square relative rounded-lg overflow-hidden bg-slate-100">
+                      <img 
+                        src={program.image} 
+                        alt={program.name}
+                        className="object-cover w-full h-full"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <div className="text-white space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">{program.progress.description}</span>
+                            <span className="text-sm font-medium">
+                              {Math.round((program.progress.current / program.progress.total) * 100)}%
+                            </span>
+                          </div>
+                          <Progress 
+                            value={(program.progress.current / program.progress.total) * 100} 
+                            className="h-2 bg-white/20"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="space-y-1">
+                        <Trophy className="w-4 h-4 mx-auto text-slate-600" />
+                        <p className="text-sm font-medium">{program.rewards.earned}</p>
+                        <p className="text-xs text-muted-foreground">Earned</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Gift className="w-4 h-4 mx-auto text-slate-600" />
+                        <p className="text-sm font-medium">{program.rewards.available}</p>
+                        <p className="text-xs text-muted-foreground">Available</p>
+                      </div>
+                      <div className="space-y-1">
+                        <Users className="w-4 h-4 mx-auto text-slate-600" />
+                        <p className="text-sm font-medium">{program.participants}</p>
+                        <p className="text-xs text-muted-foreground">Members</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <div className="p-6 pt-0">
+                    <Button 
+                      className="w-full bg-slate-900 hover:bg-slate-800"
+                      onClick={() => window.open(`https://whatsonchain.com/token/${program.id}`, '_blank')}
+                    >
+                      View NFT
+                      <ExternalLink className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
             </div>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         </TabsContent>
       </Tabs>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            {selectedNFT ? `Showing activity for ${selectedNFT.name}` : 'Showing all recent activity'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead onClick={() => requestSort('date')} className="cursor-pointer">
-                  Date
-                  {activitySortConfig?.key === 'date' && (
-                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
-                  )}
-                </TableHead>
-                <TableHead onClick={() => requestSort('program')} className="cursor-pointer">
-                  Program
-                  {activitySortConfig?.key === 'program' && (
-                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
-                  )}
-                </TableHead>
-                <TableHead onClick={() => requestSort('activity')} className="cursor-pointer">
-                  Activity
-                  {activitySortConfig?.key === 'activity' && (
-                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
-                  )}
-                </TableHead>
-                <TableHead onClick={() => requestSort('reward')} className="cursor-pointer">
-                  Reward
-                  {activitySortConfig?.key === 'reward' && (
-                    activitySortConfig.direction === 'ascending' ? <ChevronUp className="inline ml-1" /> : <ChevronDown className="inline ml-1" />
-                  )}
-                </TableHead>
-                <TableHead className="text-right">Transaction</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedActivity.map((activity) => (
-                <TableRow key={activity.id}>
-                  <TableCell>{activity.date}</TableCell>
-                  <TableCell>{activity.program}</TableCell>
-                  <TableCell>{activity.activity}</TableCell>
-                  <TableCell>{activity.reward}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => window.open(`https://whatsonchain.com/tx/${activity.txHash}`, '_blank')}
-                      className="space-x-2"
-                    >
-                      <span>View</span>
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   )
 }

@@ -49,21 +49,42 @@ type SortConfig = {
 
 const programs: Program[] = [
   { 
+    id: '1',
     name: 'Coffee Lovers', 
+    business: 'Brew Haven',
+    type: 'punch-card',
+    category: 'Food & Beverage',
+    description: 'Earn a free coffee after 10 purchases',
+    participants: 100,
+    image: '/placeholder.svg?height=100&width=100',
     completionRate: 67, 
     baseParticipants: 100,
     baseRewards: 20,
     growthRate: 1.2
   },
   { 
+    id: '2',
     name: 'Sandwich Master', 
+    business: 'Fresh Bites',
+    type: 'points',
+    category: 'Food & Beverage',
+    description: 'Earn points with every sandwich purchase',
+    participants: 150,
+    image: '/placeholder.svg?height=100&width=100',
     completionRate: 89, 
     baseParticipants: 150,
     baseRewards: 30,
     growthRate: 1.15
   },
   { 
+    id: '3',
     name: 'Book Club Rewards', 
+    business: 'Page Turner Books',
+    type: 'tiered',
+    category: 'Retail',
+    description: 'Unlock exclusive discounts as you read more',
+    participants: 80,
+    image: '/placeholder.svg?height=100&width=100',
     completionRate: 45, 
     baseParticipants: 80,
     baseRewards: 15,
@@ -86,16 +107,16 @@ const generateChartData = (startDate: Date, endDate: Date, selectedPrograms: str
     const programsToShow = selectedPrograms.length === 0 ? programs : programs.filter(p => selectedPrograms.includes(p.name))
 
     programsToShow.forEach(program => {
-      const growthRate = useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate
-      dataPoint[`${program.name} Participants`] = Math.round(program.baseParticipants * Math.pow(growthRate, index))
-      dataPoint[`${program.name} Rewards`] = Math.round(program.baseRewards * Math.pow(growthRate, index))
+      const growthRate = useDaily ? Math.pow(program.growthRate || 1, 1/30) : program.growthRate || 1
+      dataPoint[`${program.name} Participants`] = Math.round((program.baseParticipants || 0) * Math.pow(growthRate, index))
+      dataPoint[`${program.name} Rewards`] = Math.round((program.baseRewards || 0) * Math.pow(growthRate, index))
     })
 
     if (selectedPrograms.length === 0) {
       dataPoint.participants = programsToShow.reduce((sum, program) => 
-        sum + Math.round(program.baseParticipants * Math.pow(useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate, index)), 0)
+        sum + Math.round((program.baseParticipants || 0) * Math.pow(useDaily ? Math.pow(program.growthRate || 1, 1/30) : program.growthRate || 1, index)), 0)
       dataPoint.rewards = programsToShow.reduce((sum, program) => 
-        sum + Math.round(program.baseRewards * Math.pow(useDaily ? Math.pow(program.growthRate, 1/30) : program.growthRate, index)), 0)
+        sum + Math.round((program.baseRewards || 0) * Math.pow(useDaily ? Math.pow(program.growthRate || 1, 1/30) : program.growthRate || 1, index)), 0)
     }
 
     return dataPoint
@@ -695,7 +716,7 @@ export default function MerchantPage() {
                 <h3 className="text-lg font-medium">General Settings</h3>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">Automatic Rewards</div>
+                    <div className="font-medium">Automatic Rewards</div><div className="font-medium">Automatic Rewards</div>
                     <div className="text-sm text-muted-foreground">Automatically issue rewards when criteria are met</div>
                   </div>
                   <Switch />

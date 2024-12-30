@@ -10,9 +10,16 @@ export interface Transaction {
 export interface Program {
   id: string
   name: string
+  business: string
+  type: 'punch-card' | 'tiered' | 'points' | 'coalition'
+  category: string
   description: string
-  status: 'active' | 'inactive'
-  created: Date
+  participants: number
+  image: string
+  completionRate?: number
+  baseParticipants?: number
+  baseRewards?: number
+  growthRate?: number
 }
 
 export interface WalletData {
