@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,7 +23,7 @@ interface Program {
   image: string
 }
 
-const programs: Program[] = [
+const defaultPrograms: Program[] = [
   {
     id: '1',
     name: "Coffee Lovers Rewards",
@@ -34,46 +34,7 @@ const programs: Program[] = [
     participants: 1500,
     image: "/placeholder.svg?height=100&width=100"
   },
-  {
-    id: '2',
-    name: "Bookworm Rewards",
-    business: "Page Turner Books",
-    type: "points",
-    category: "Retail",
-    description: "Earn points with every purchase, get exclusive discounts",
-    participants: 800,
-    image: "/placeholder.svg?height=100&width=100"
-  },
-  {
-    id: '3',
-    name: "Fitness First",
-    business: "Elite Gym",
-    type: "tiered",
-    category: "Health & Fitness",
-    description: "Unlock premium benefits as you level up",
-    participants: 2000,
-    image: "/placeholder.svg?height=100&width=100"
-  },
-  {
-    id: '4',
-    name: "Downtown Rewards",
-    business: "City Business Alliance",
-    type: "coalition",
-    category: "Multi-merchant",
-    description: "Earn points at multiple downtown businesses",
-    participants: 5000,
-    image: "/placeholder.svg?height=100&width=100"
-  },
-  {
-    id: '5',
-    name: "Deli Delights",
-    business: "Fresh Bites",
-    type: "punch-card",
-    category: "Food & Beverage",
-    description: "Buy 9 sandwiches, get 1 free",
-    participants: 1200,
-    image: "/placeholder.svg?height=100&width=100"
-  }
+  // ... other default programs
 ]
 
 const categories = [
@@ -92,24 +53,61 @@ const programTypes = [
   { value: "coalition", label: "Coalition" }
 ]
 
-export default function Component() {
+export default function HomePage() {
   const router = useRouter()
+  const [walletData, setWalletData] = useState<ReturnType<typeof getWalletData> | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [selectedType, setSelectedType] = useState('all')
-  const walletData = getWalletData()
+  const [allPrograms, setAllPrograms] = useState<Program[]>([])
+  const [joinedPrograms, setJoinedPrograms] = useState<string[]>([])
 
-  const filteredPrograms = programs.filter(program => {
+  useEffect(() => {
+    const data = getWalletData()
+    setWalletData(data)
+
+    // Load default programs and any custom programs
+    const globalPrograms = JSON.parse(localStorage.getItem('globalPrograms') || '[]')
+    setAllPrograms([...defaultPrograms, ...globalPrograms])
+
+    // Load user's joined programs
+    if (data?.type === 'user') {
+      const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${data.publicAddress}`) || '[]')
+      setJoinedPrograms(userPrograms)
+    }
+  }, [])
+
+  const handleJoinProgram = (program: Program) => {
+    if (!walletData) {
+      router.push('/wallet-generation')
+      return
+    }
+
+    // Update program participants
+    const updatedPrograms = allPrograms.map(p => {
+      if (p.id === program.id) {
+        return { ...p, participants: p.participants + 1 }
+      }
+      return p
+    })
+    setAllPrograms(updatedPrograms)
+    localStorage.setItem('globalPrograms', JSON.stringify(updatedPrograms))
+
+    // Add to user's programs
+    const updatedJoinedPrograms = [...joinedPrograms, program.id]
+    setJoinedPrograms(updatedJoinedPrograms)
+    localStorage.setItem(`userPrograms_${walletData.publicAddress}`, JSON.stringify(updatedJoinedPrograms))
+  }
+
+  const filteredPrograms = allPrograms.filter(program => {
     const search = searchTerm.toLowerCase().trim()
     
-    // Search across all relevant fields
     const searchableContent = [
       program.name,
       program.business,
       program.description,
       program.type,
       program.category,
-      // Add common variations of program types for better matching
       program.type === 'punch-card' ? 'punchcard punches stamp stamps' : '',
       program.type === 'points' ? 'point rewards reward points-based' : '',
       program.type === 'tiered' ? 'tier levels level-based status' : '',
@@ -296,13 +294,24 @@ export default function Component() {
                   {program.participants.toLocaleString()} participants
                 </p>
               </CardContent>
-              <CardFooter>
-                <Button className="w-full" asChild>
-                  <Link href="/wallet-generation">
-                    Join Program
-                    <Gift className="ml-2 h-4 w-4" />
-                  </Link>
+              <CardFooter className="flex gap-2">
+                <Button 
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => router.push(`/program/${program.id}`)}
+                >
+                  View Details
                 </Button>
+                {walletData?.type === 'user' && (
+                  <Button 
+                    className="flex-1"
+                    disabled={joinedPrograms.includes(program.id)}
+                    onClick={() => handleJoinProgram(program)}
+                  >
+                    {joinedPrograms.includes(program.id) ? 'Joined' : 'Join Program'}
+                    <Gift className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useForm, Controller } from "react-hook-form"
+import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Button } from "@/components/ui/button"
@@ -15,19 +15,64 @@ import { Switch } from "@/components/ui/switch"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, ChevronLeft, ChevronRight } from 'lucide-react'
+import { getWalletData } from '@/lib/wallet-utils'
 
 const programTypes = ["Punch Card", "Tiered", "Points", "Cashback", "Subscription"]
+const categories = ["Food & Beverage", "Retail", "Health & Fitness", "Multi-merchant"]
 
 const formSchema = z.object({
   name: z.string().min(1, "Program name is required"),
   type: z.enum(programTypes as [string, ...string[]]),
+  category: z.enum(categories as [string, ...string[]]),
   description: z.string().min(1, "Description is required"),
-  rewardStructure: z.string().min(1, "Reward structure is required"),
+  rewardStructure: z.string().optional(),
   isOpenEnded: z.boolean(),
   nftDesign: z.instanceof(File).optional(),
 })
 
 type FormValues = z.infer<typeof formSchema>
+
+const saveProgramData = (program: any) => {
+  const timestamp = new Date().toISOString()
+  const walletData = getWalletData()
+  const merchantId = walletData?.publicAddress || 'default'
+  
+  // Get existing programs
+  const existingPrograms = JSON.parse(localStorage.getItem('programs') || '{}')
+  const globalPrograms = JSON.parse(localStorage.getItem('globalPrograms') || '[]')
+  
+  // Initialize merchant's programs if they don't exist
+  if (!existingPrograms[merchantId]) {
+    existingPrograms[merchantId] = []
+  }
+  
+  // Create new program with proper date and structure
+  const newProgram = {
+    ...program,
+    id: `${merchantId}-${Date.now()}`,
+    business: walletData?.businessName || 'Unknown Business',
+    participants: [],
+    rewards_claimed: 0,
+    created_at: timestamp,
+    image: "/placeholder.svg?height=100&width=100",
+    merchantId
+  }
+  
+  // Add to merchant-specific programs
+  existingPrograms[merchantId].push(newProgram)
+  localStorage.setItem('programs', JSON.stringify(existingPrograms))
+  
+  // Add to global programs list
+  const globalProgram = {
+    ...newProgram,
+    participants: 0, // Convert array to number for global listing
+    type: program.type.toLowerCase().replace(' ', '-') as 'punch-card' | 'tiered' | 'points' | 'coalition'
+  }
+  globalPrograms.push(globalProgram)
+  localStorage.setItem('globalPrograms', JSON.stringify(globalPrograms))
+  
+  return newProgram
+}
 
 export default function CreateProgram() {
   const router = useRouter()
@@ -39,6 +84,7 @@ export default function CreateProgram() {
     defaultValues: {
       name: "",
       type: "Punch Card",
+      category: "Retail",
       description: "",
       rewardStructure: "",
       isOpenEnded: false,
@@ -47,16 +93,24 @@ export default function CreateProgram() {
   })
 
   const onSubmit = (data: FormValues) => {
-    console.log("Form submitted:", data)
-    // Here you would typically send the data to your backend
-    // For now, we'll just redirect to the merchant dashboard
-    router.push('/merchants')
+    const program = saveProgramData({
+      name: data.name,
+      type: data.type,
+      category: data.category,
+      description: data.description,
+      rewardStructure: data.rewardStructure,
+      isOpenEnded: data.isOpenEnded,
+    })
+    
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('programCreated', { detail: program }))
+    
+    // Redirect to merchant dashboard
+    router.push('/merchant')
   }
 
   const nextStep = () => {
-    form.trigger().then((isValid) => {
-      if (isValid) setStep(step + 1)
-    })
+    setStep(step + 1)
   }
 
   const prevStep = () => setStep(step - 1)
@@ -107,6 +161,30 @@ export default function CreateProgram() {
                               {programTypes.map((type) => (
                                 <SelectItem key={type} value={type}>
                                   {type}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="category"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Category</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {categories.map((category) => (
+                                <SelectItem key={category} value={category}>
+                                  {category}
                                 </SelectItem>
                               ))}
                             </SelectContent>

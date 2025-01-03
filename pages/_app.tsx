@@ -95,7 +95,7 @@ export default function App({ Component, pageProps }: AppProps) {
                 </Link>
                 {walletData && (
                   <Link
-                    href={walletData.type === 'merchant' ? '/merchants' : '/user'}
+                    href={walletData.type === 'merchant' ? '/merchant' : '/user'}
                     className="transition-colors hover:text-foreground/80 text-foreground"
                   >
                     Dashboard
