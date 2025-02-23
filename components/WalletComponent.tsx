@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createWallet, formatWalletInfo } from '@/bsvUtilities/bsvWallet';
 import { Button } from "@/components/ui/button"
+import type { WalletInfo } from '@/types'
 
 const WalletComponent: React.FC = () => {
   const [walletInfo, setWalletInfo] = useState<string[]>([]);

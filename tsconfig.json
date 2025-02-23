@@ -19,10 +19,21 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/components/*": ["./components/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/types/*": ["./types/*"],
+      "@/styles/*": ["./styles/*"],
+      "@/bsvUtilities/*": ["./bsvUtilities/*"]
     },
-    "baseUrl": "."
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
   },
   "include": [
     "next-env.d.ts",
@@ -30,7 +41,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "bsvUtilities/**/*.ts",
-    "types/**/*.d.ts"
+    "types/**/*.d.ts",
+    "lib/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }
