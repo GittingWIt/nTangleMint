@@ -26,8 +26,8 @@ function shortenAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-6)}`
 }
 
-// Add merchant routes to public paths
-const PUBLIC_PATHS = ["/", "/about", "/test-bsv", "/merchant/create-program", "/merchant/create-program/coupon-book"]
+// Public paths that don't require wallet authentication
+const PUBLIC_PATHS = ["/", "/about", "/test-bsv", "/wallet-generation", "/wallet-restoration"]
 
 export default function Navigation() {
   const router = useRouter()
@@ -38,61 +38,68 @@ export default function Navigation() {
   const [isLoading, setIsLoading] = React.useState(true)
   const [isNavigating, setIsNavigating] = React.useState(false)
   const initializationAttempted = React.useRef(false)
+  const mounted = React.useRef(true)
 
-  React.useEffect(() => {
-    let mounted = true
+  // Function to check if current path matches wallet type
+  const checkPathMatchesWalletType = (path: string, data: WalletData | null) => {
+    if (!data) return true // Allow if no wallet data (public paths)
+    const pathSegments = path.split("/")
+    const mainPath = pathSegments[1] // Get first path segment after /
+    return mainPath === data.type || PUBLIC_PATHS.includes(path)
+  }
 
-    const loadWalletData = async () => {
-      if (!mounted || initializationAttempted.current) return
+  const loadWalletData = React.useCallback(async () => {
+    if (!mounted.current || initializationAttempted.current) return
 
-      try {
-        setIsLoading(true)
-        initializationAttempted.current = true
+    try {
+      setIsLoading(true)
+      initializationAttempted.current = true
 
-        // Skip wallet checks for public paths
-        if (PUBLIC_PATHS.includes(pathname)) {
-          setIsLoading(false)
-          return
+      const data = await getWalletData()
+      if (!mounted.current) return
+
+      console.log("[Navigation] Loaded wallet data:", {
+        exists: !!data,
+        type: data?.type,
+        path: pathname,
+      })
+
+      setWalletData(data)
+      console.log("[Navigation] Wallet data set:", data)
+
+      // Handle routing based on wallet state
+      if (data) {
+        // If we have wallet data but are on a path that doesn't match the wallet type
+        if (!checkPathMatchesWalletType(pathname, data)) {
+          console.log("[Navigation] Path mismatch, redirecting to correct dashboard")
+          setTimeout(() => {
+            router.push(`/${data.type}`)
+          }, 100)
         }
-
-        const data = await getWalletData()
-        if (!mounted) return
-
-        setWalletData(data)
-
-        // Only redirect if:
-        // 1. We're on the main merchant dashboard
-        // 2. No wallet data exists
-        // 3. Not already navigating
-        if (pathname === "/merchant" && !data && !isNavigating) {
-          console.log("[Navigation] No wallet data, redirecting to wallet-generation")
-          setIsNavigating(true)
+      } else if (!PUBLIC_PATHS.includes(pathname)) {
+        // If no wallet data and not on public path, redirect to wallet generation
+        console.log("[Navigation] No wallet data, redirecting to wallet generation")
+        setTimeout(() => {
           router.push("/wallet-generation")
-          return
-        }
-
-        // If we have wallet data and we're on the merchant dashboard, verify merchant type
-        if (data && pathname === "/merchant" && data.type !== "merchant") {
-          console.log("[Navigation] User is not a merchant, redirecting to home")
-          setIsNavigating(true)
-          router.push("/")
-          return
-        }
-      } catch (err) {
-        console.error("[Navigation] Failed to load wallet data:", err)
-      } finally {
-        if (mounted) {
-          setIsLoading(false)
-        }
+        }, 100)
+      }
+    } catch (err) {
+      console.error("[Navigation] Failed to load wallet data:", err)
+    } finally {
+      if (mounted.current) {
+        setIsLoading(false)
       }
     }
+  }, [checkPathMatchesWalletType, getWalletData, mounted])
 
-    // Initial load
+  React.useEffect(() => {
+    const mounted = { current: true }
+
     loadWalletData()
 
-    // Event listeners for updates
     const handleWalletUpdate = () => {
       console.log("[Navigation] Wallet updated event received")
+      initializationAttempted.current = false // Reset to allow recheck
       loadWalletData()
     }
 
@@ -100,21 +107,27 @@ export default function Navigation() {
     window.addEventListener("storage", handleWalletUpdate)
 
     return () => {
-      mounted = false
+      mounted.current = false
       window.removeEventListener("walletUpdated", handleWalletUpdate)
       window.removeEventListener("storage", handleWalletUpdate)
     }
-  }, [pathname, router, isNavigating])
+  }, [loadWalletData])
 
   const handleNavigation = async (path: string) => {
     if (!path || isNavigating) return
     try {
       setIsNavigating(true)
       const validPath = path.startsWith("/") ? path : `/${path}`
+
+      // Check if navigation is allowed based on wallet state
+      if (!checkPathMatchesWalletType(validPath, walletData)) {
+        console.log("[Navigation] Invalid path for wallet type")
+        return
+      }
+
       await router.push(validPath)
     } catch (error) {
       console.error("[Navigation] Error navigating to", path, ":", error)
-      window.location.href = path
     } finally {
       setIsNavigating(false)
     }
@@ -142,6 +155,10 @@ export default function Navigation() {
     }
   }
 
+  // Determine if we should show wallet controls
+  const showWalletControls = walletData?.publicAddress && !isLoading
+
+  console.log("[Navigation] Rendering with wallet data:", walletData)
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
@@ -159,7 +176,7 @@ export default function Navigation() {
             >
               About
             </button>
-            {walletData && (
+            {showWalletControls && (
               <button
                 onClick={() => handleNavigation(`/${walletData.type}`)}
                 className={cn(
@@ -172,7 +189,7 @@ export default function Navigation() {
             )}
           </div>
           <div className="flex items-center space-x-4">
-            {walletData?.publicAddress ? (
+            {showWalletControls ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="font-mono text-sm">

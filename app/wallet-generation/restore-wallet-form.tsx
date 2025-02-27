@@ -98,17 +98,55 @@ function RestoreWalletFormComponent() {
       const normalizedMnemonic = mnemonic.trim().toLowerCase()
       console.log("[Form] Validating mnemonic")
 
-      // Clear any existing wallet data
-      await clearWalletData()
-
+      // First validate the mnemonic format
       const isValid = validateMnemonic(normalizedMnemonic)
       if (!isValid) {
         throw new Error("Invalid recovery phrase")
       }
 
-      const storedType = await getStoredWalletType(normalizedMnemonic)
-      console.log("[Form] Mnemonic validation successful, stored type:", storedType)
+      // Clear any existing wallet data before validation
+      await clearWalletData()
 
+      // Get the stored wallet type
+      const storedType = await getStoredWalletType(normalizedMnemonic)
+      console.log("[Form] Stored wallet type:", storedType)
+
+      // If no stored type is found, try to restore the wallet to determine type
+      if (!storedType) {
+        // Try to restore as user first
+        try {
+          const userWallet = await restoreWallet(normalizedMnemonic, password, "user")
+          if (userWallet) {
+            console.log("[Form] Detected user wallet")
+            setValidation({
+              isValid: true,
+              storedType: "user",
+            })
+            return
+          }
+        } catch (e) {
+          console.log("[Form] Not a user wallet, trying merchant")
+        }
+
+        // Try as merchant
+        try {
+          const merchantWallet = await restoreWallet(normalizedMnemonic, password, "merchant")
+          if (merchantWallet) {
+            console.log("[Form] Detected merchant wallet")
+            setValidation({
+              isValid: true,
+              storedType: "merchant",
+            })
+            return
+          }
+        } catch (e) {
+          console.log("[Form] Not a merchant wallet")
+        }
+
+        throw new Error("Could not determine wallet type")
+      }
+
+      console.log("[Form] Mnemonic validation successful, stored type:", storedType)
       setValidation({
         isValid: true,
         storedType,
@@ -141,8 +179,14 @@ function RestoreWalletFormComponent() {
       // Clear any existing wallet data
       await clearWalletData()
 
-      // Attempt restoration with password
+      // Attempt restoration with password and enforce stored type
       const wallet = await restoreWallet(normalizedMnemonic, password, validation.storedType)
+
+      // Verify wallet type matches stored type
+      if (wallet.type !== validation.storedType) {
+        throw new Error(`Wallet type mismatch. Expected ${validation.storedType}, got ${wallet.type}`)
+      }
+
       console.log("[Form] Wallet restored:", {
         type: wallet.type,
         address: wallet.publicAddress,
