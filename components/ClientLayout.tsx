@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { usePathname, useRouter } from "next/navigation"
 
 const DEBUG = process.env.NODE_ENV === "development"
-const INIT_TIMEOUT = 5000
 const RETRY_DELAY = 500
 
 function debug(...args: any[]) {

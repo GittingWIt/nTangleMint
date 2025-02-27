@@ -9,12 +9,12 @@ import { useWalletData } from "@/hooks/useWalletData"
 import type { Program } from "@/types"
 
 interface DashboardContentProps {
-  programs?: Program[]
-  isLoading?: boolean
-  error?: string
+  programs: Program[]
+  isLoading: boolean
+  error: string
 }
 
-export function DashboardContent({ programs = [], isLoading = false, error }: DashboardContentProps) {
+export function DashboardContent({ programs, isLoading, error }: DashboardContentProps) {
   const { walletData } = useWalletData()
 
   if (isLoading) {

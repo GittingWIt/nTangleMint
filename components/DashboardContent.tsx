@@ -1,26 +1,40 @@
-'use client'
+"use client"
 
-import * as React from 'react'
-import { useRouter } from 'next/navigation'
-import { Search, Trophy, Gift, Users, ArrowUpRight } from 'lucide-react'
-import { motion } from 'framer-motion'
+import * as React from "react"
+import { useRouter } from "next/navigation"
+import { Search, Trophy, Gift, Users, ArrowUpRight } from "lucide-react"
+import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createWallet, restoreWallet } from '@/lib/bsv/wallet'
-import { programUtils } from '@/lib/program-utils'
-import { NFTVisualization } from '@/components/NFTVisualization'
-import type { Program, WalletData, NFTDesign } from '@/types'
-import type { NFTDesign } from '@/components/NFTVisualization'
+import { NFTVisualization } from "@/components/NFTVisualization"
+import type { WalletData } from "@/types"
+import type { NFTDesign, NFTLayer } from "@/components/NFTVisualization"
+
+type ProgramType = "punch-card" | "points" | "tiered"
+type LayerType = "gradient" | "icon" | "color" | "image" | "pattern" | "svg"
+type BlendMode =
+  | "overlay"
+  | "multiply"
+  | "normal"
+  | "screen"
+  | "darken"
+  | "lighten"
+  | "color-dodge"
+  | "color-burn"
+  | "hard-light"
+  | "soft-light"
+  | "difference"
+  | "exclusion"
 
 interface NFTDisplay {
   programId: string
   programName: string
   merchantName: string
-  type: 'punch-card' | 'points' | 'tiered'
+  type: ProgramType
   progress: number
   target: number
   nftCount: number
@@ -29,92 +43,127 @@ interface NFTDisplay {
   nftDesign: NFTDesign
 }
 
-function getTypeColor(type: NFTDisplay['type']): string {
+function getTypeColor(type: ProgramType): string {
   switch (type) {
-    case 'punch-card': return 'hsl(var(--primary))'
-    case 'points': return 'hsl(var(--secondary))'
-    case 'tiered': return 'hsl(var(--accent))'
-    default: return 'hsl(var(--muted))'
+    case "punch-card":
+      return "hsl(var(--primary))"
+    case "points":
+      return "hsl(var(--secondary))"
+    case "tiered":
+      return "hsl(var(--accent))"
+    default:
+      return "hsl(var(--muted))"
   }
 }
 
-function getProgramIcon(type: NFTDisplay['type']): string {
+function getProgramIcon(type: ProgramType): string {
   switch (type) {
-    case 'punch-card': return '🎟️'
-    case 'points': return '🎯'
-    case 'tiered': return '🏆'
-    default: return '🎁'
+    case "punch-card":
+      return "🎟️"
+    case "points":
+      return "🎯"
+    case "tiered":
+      return "🏆"
+    default:
+      return "🎁"
   }
+}
+
+// Temporary mock function until the actual utility is available
+function getMockWalletData(): WalletData {
+  return {
+    type: "user",
+    publicAddress: "mock-address",
+    // Add other required WalletData properties here
+  } as WalletData
 }
 
 export default function DashboardContent() {
   const router = useRouter()
   const [isLoading, setIsLoading] = React.useState(true)
-  const [searchTerm, setSearchTerm] = React.useState('')
-  const [activeFilter, setActiveFilter] = React.useState('all')
+  const [searchTerm, setSearchTerm] = React.useState("")
+  const [activeFilter, setActiveFilter] = React.useState<ProgramType | "all">("all")
   const [programs, setPrograms] = React.useState<NFTDisplay[]>([])
   const [walletData, setWalletData] = React.useState<WalletData | null>(null)
 
   React.useEffect(() => {
-    const data = getWalletData()
+    const data = getMockWalletData()
     setWalletData(data)
-    
-    if (!data || data.type !== 'user') {
-      router.push('/wallet-generation')
+
+    if (!data || data.type !== "user") {
+      router.push("/wallet-generation")
       return
     }
 
     const loadUserData = async () => {
       try {
         setIsLoading(true)
-        const allPrograms = programUtils.getAllPrograms()
-        const userParticipation = programUtils.getUserParticipation(data.publicAddress)
-        
-        const participating = allPrograms
-          .filter(program => userParticipation.some(p => p.programId === program.id))
-          .map(program => {
-            const participation = userParticipation.find(p => p.programId === program.id)
-            const progress = participation?.points || 0
-            const target = program.type === 'punch-card' ? 10 : 
-                          program.type === 'points' ? 1000 : 
-                          program.pointsPerReward || 100
+        // Mock data for demonstration
+        const mockPrograms = [
+          {
+            id: "1",
+            name: "Coffee Rewards",
+            businessName: "Local Coffee Shop",
+            type: "punch-card" as ProgramType,
+            pointsPerReward: 10,
+            participants: ["user1", "user2"],
+          },
+        ]
 
-            return {
+        const mockParticipation = [
+          {
+            programId: "1",
+            points: 5,
+            rewards_claimed: 2,
+          },
+        ]
+
+        const participating = mockPrograms
+          .filter((program) => mockParticipation.some((p) => p.programId === program.id))
+          .map((program) => {
+            const participation = mockParticipation.find((p) => p.programId === program.id)
+            const progress = participation?.points || 0
+            const target =
+              program.type === "punch-card" ? 10 : program.type === "points" ? 1000 : program.pointsPerReward || 100
+
+            const nftDisplay: NFTDisplay = {
               programId: program.id,
               programName: program.name,
-              merchantName: program.businessName || 'Unknown Business',
-              type: program.type as NFTDisplay['type'],
+              merchantName: program.businessName || "Unknown Business",
+              type: program.type,
               progress,
               target,
               nftCount: participation?.rewards_claimed || 0,
               availableRewards: Math.floor(progress / target),
               totalMembers: program.participants?.length || 0,
-              nftDesign: program.nftDesign || {
+              nftDesign: {
                 layers: [
                   {
-                    type: 'gradient',
-                    content: `linear-gradient(135deg, ${getTypeColor(program.type)} 0%, hsl(var(--secondary)) 100%)`
-                  },
+                    type: "gradient" as LayerType,
+                    content: `linear-gradient(135deg, ${getTypeColor(program.type)} 0%, hsl(var(--secondary)) 100%)`,
+                  } as NFTLayer,
                   {
-                    type: 'icon',
+                    type: "icon" as LayerType,
                     content: getProgramIcon(program.type),
                     opacity: 0.2,
-                    blendMode: 'overlay'
-                  }
+                    blendMode: "overlay" as BlendMode,
+                  } as NFTLayer,
                 ],
-                aspectRatio: '2:1',
-                borderRadius: '0.5rem',
+                aspectRatio: "2:1",
+                borderRadius: "0.5rem",
                 animation: {
-                  type: 'pulse',
-                  duration: 2
-                }
-              }
+                  type: "pulse",
+                  duration: 2,
+                },
+              },
             }
+
+            return nftDisplay
           })
 
         setPrograms(participating)
       } catch (error) {
-        console.error('Error loading programs:', error)
+        console.error("Error loading programs:", error)
       } finally {
         setIsLoading(false)
       }
@@ -123,22 +172,22 @@ export default function DashboardContent() {
     loadUserData()
   }, [router])
 
-  const filteredPrograms = programs.filter(program => {
-    const matchesSearch = program.programName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         program.merchantName.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesFilter = activeFilter === 'all' || program.type === activeFilter
+  const filteredPrograms = programs.filter((program) => {
+    const matchesSearch =
+      program.programName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      program.merchantName.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesFilter = activeFilter === "all" || program.type === activeFilter
     return matchesSearch && matchesFilter
   })
 
   const getProgressLabel = (program: NFTDisplay) => {
     switch (program.type) {
-      case 'punch-card':
+      case "punch-card":
         return `${program.progress}/${program.target} punches`
-      case 'points':
+      case "points":
         return `${program.progress}/${program.target} points to next tier`
-      case 'tiered':
-        const tier = program.progress >= 1000 ? 'Gold' :
-                    program.progress >= 500 ? 'Silver' : 'Bronze'
+      case "tiered":
+        const tier = program.progress >= 1000 ? "Gold" : program.progress >= 500 ? "Silver" : "Bronze"
         return `${tier} Tier`
       default:
         return `${program.progress} points`
@@ -153,9 +202,7 @@ export default function DashboardContent() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">Your NFT Collection</h1>
-        <p className="text-muted-foreground">
-          Manage your loyalty program NFTs
-        </p>
+        <p className="text-muted-foreground">Manage your loyalty program NFTs</p>
       </div>
 
       <div className="relative">
@@ -168,7 +215,11 @@ export default function DashboardContent() {
         />
       </div>
 
-      <Tabs defaultValue="all" value={activeFilter} onValueChange={setActiveFilter}>
+      <Tabs
+        defaultValue="all"
+        value={activeFilter}
+        onValueChange={(value) => setActiveFilter(value as ProgramType | "all")}
+      >
         <TabsList>
           <TabsTrigger value="all">All NFTs</TabsTrigger>
           <TabsTrigger value="punch-card">Punch Cards</TabsTrigger>
@@ -204,7 +255,7 @@ export default function DashboardContent() {
               </CardContent>
             </Card>
           ) : (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"

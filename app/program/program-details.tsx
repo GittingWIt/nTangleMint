@@ -1,116 +1,144 @@
-'use client'
+"use client"
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, Gift, Users, Trophy, Wallet } from 'lucide-react'
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, Gift, Users, Trophy, Wallet, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert"
-import { getWalletData } from '@/lib/wallet-utils'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { getWalletData } from "@/lib/storage"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import type { Program } from "@/types"
+import { PROGRAM_TYPES } from "@/lib/constants"
 
-interface Program {
-  id: string
-  name: string
-  business: string
-  type: 'punch-card' | 'tiered' | 'points' | 'coalition'
-  category: string
-  description: string
-  participants: number
-  rewards_claimed: number
-  image: string
-  merchantId: string
-  rewardStructure?: string
-  isOpenEnded?: boolean
+interface ProgramDetailsProps {
+  programId: string
 }
 
-export default function ProgramPage({ params }: { params: { id: string } }) {
+export default function ProgramDetails({ programId }: ProgramDetailsProps) {
   const router = useRouter()
   const [program, setProgram] = useState<Program | null>(null)
-  const [walletData, setWalletData] = useState<ReturnType<typeof getWalletData> | null>(null)
+  const [walletData, setWalletData] = useState<Awaited<ReturnType<typeof getWalletData>> | null>(null)
   const [isJoined, setIsJoined] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [joinLoading, setJoinLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const data = getWalletData()
-    setWalletData(data)
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
 
-    // Load program data
-    const globalPrograms = JSON.parse(localStorage.getItem('globalPrograms') || '[]')
-    const foundProgram = globalPrograms.find((p: Program) => p.id === params.id)
-    setProgram(foundProgram)
+        // Load wallet data
+        const data = await getWalletData()
+        setWalletData(data)
 
-    // Check if user has already joined
-    if (data?.type === 'user') {
-      const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${data.publicAddress}`) || '[]')
-      setIsJoined(userPrograms.some((p: string) => p === params.id))
+        // Load program data
+        // In production, this would be an API call
+        const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
+        const foundProgram = globalPrograms.find((p: Program) => p.id === programId)
+
+        if (!foundProgram) {
+          setError("Program not found")
+          return
+        }
+
+        setProgram(foundProgram)
+
+        // Check if user has already joined
+        if (data?.type === "user") {
+          const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${data.publicAddress}`) || "[]")
+          setIsJoined(userPrograms.includes(programId))
+        }
+      } catch (err) {
+        console.error("Error loading program:", err)
+        setError("Failed to load program details")
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [params.id])
 
-  const handleJoinProgram = () => {
+    loadData()
+  }, [programId])
+
+  const handleJoinProgram = async () => {
     if (!walletData || !program) return
 
-    setLoading(true)
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      setJoinLoading(true)
+      setError(null)
+
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
       // Update program participants
-      const globalPrograms = JSON.parse(localStorage.getItem('globalPrograms') || '[]')
+      const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
       const updatedPrograms = globalPrograms.map((p: Program) => {
         if (p.id === program.id) {
-          return { ...p, participants: p.participants + 1 }
+          return { ...p, participants: [...p.participants, walletData.publicAddress] }
         }
         return p
       })
-      localStorage.setItem('globalPrograms', JSON.stringify(updatedPrograms))
+      localStorage.setItem("globalPrograms", JSON.stringify(updatedPrograms))
 
       // Add to user's programs
-      const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${walletData.publicAddress}`) || '[]')
+      const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${walletData.publicAddress}`) || "[]")
       userPrograms.push(program.id)
       localStorage.setItem(`userPrograms_${walletData.publicAddress}`, JSON.stringify(userPrograms))
 
       setIsJoined(true)
-      setLoading(false)
-    }, 1000)
+    } catch (err) {
+      console.error("Error joining program:", err)
+      setError("Failed to join program")
+    } finally {
+      setJoinLoading(false)
+    }
   }
 
-  if (!program) {
+  if (loading) {
     return (
-      <div className="container mx-auto p-4">
-        <Alert>
-          <AlertTitle>Program Not Found</AlertTitle>
-          <AlertDescription>
-            The program you're looking for doesn't exist or has been removed.
-          </AlertDescription>
-        </Alert>
+      <div className="container mx-auto p-4 flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner />
       </div>
     )
   }
 
-  const getTypeColor = (type: Program['type']) => {
-    const colors = {
-      'punch-card': 'bg-blue-500',
-      'points': 'bg-green-500',
-      'tiered': 'bg-purple-500',
-      'coalition': 'bg-orange-500'
+  if (error || !program) {
+    return (
+      <div className="container mx-auto p-4">
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error || "Program not found"}</AlertDescription>
+        </Alert>
+        <Button variant="ghost" className="mt-4" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Go Back
+        </Button>
+      </div>
+    )
+  }
+
+  const getTypeColor = (type: Program["type"]) => {
+    switch (type) {
+      case PROGRAM_TYPES.PUNCH_CARD:
+        return "bg-blue-500"
+      case PROGRAM_TYPES.POINTS:
+        return "bg-green-500"
+      case PROGRAM_TYPES.TIERED:
+        return "bg-purple-500"
+      case PROGRAM_TYPES.COALITION:
+        return "bg-orange-500"
+      default:
+        return "bg-gray-500"
     }
-    return colors[type]
   }
 
   const renderRewardStructure = () => {
     switch (program.type) {
-      case 'punch-card':
+      case PROGRAM_TYPES.PUNCH_CARD:
         return (
           <div className="grid gap-4">
             <div className="grid grid-cols-5 gap-2">
@@ -126,7 +154,7 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
             <p className="text-sm text-muted-foreground">Complete 10 purchases to earn a free reward</p>
           </div>
         )
-      case 'tiered':
+      case PROGRAM_TYPES.TIERED:
         return (
           <Table>
             <TableHeader>
@@ -137,40 +165,33 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow>
-                <TableCell>Bronze</TableCell>
-                <TableCell>0</TableCell>
-                <TableCell>Basic rewards and birthday bonus</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Silver</TableCell>
-                <TableCell>1000</TableCell>
-                <TableCell>5% bonus rewards + Bronze benefits</TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Gold</TableCell>
-                <TableCell>5000</TableCell>
-                <TableCell>10% bonus rewards + Silver benefits</TableCell>
-              </TableRow>
+              {program.rewards.map((reward, index) => (
+                <TableRow key={index}>
+                  <TableCell>{reward.description}</TableCell>
+                  <TableCell>{reward.threshold}</TableCell>
+                  <TableCell>Exclusive rewards and benefits</TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )
       default:
         return (
-          <p className="text-sm text-muted-foreground">
-            {program.rewardStructure || 'Earn points with every purchase and redeem them for exclusive rewards.'}
-          </p>
+          <div className="space-y-4">
+            {program.rewards.map((reward, index) => (
+              <div key={index} className="flex justify-between items-center">
+                <span>{reward.description}</span>
+                <span>{reward.threshold} points</span>
+              </div>
+            ))}
+          </div>
         )
     }
   }
 
   return (
     <div className="container mx-auto p-4 space-y-6">
-      <Button
-        variant="ghost"
-        className="mb-4"
-        onClick={() => router.back()}
-      >
+      <Button variant="ghost" className="mb-4" onClick={() => router.back()}>
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back
       </Button>
@@ -182,7 +203,7 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
               <div className="flex items-start justify-between">
                 <div>
                   <CardTitle className="text-2xl">{program.name}</CardTitle>
-                  <CardDescription className="text-lg">{program.business}</CardDescription>
+                  <CardDescription className="text-lg">{program.businessName}</CardDescription>
                 </div>
                 <Badge variant="secondary" className={`${getTypeColor(program.type)} text-white`}>
                   {program.type}
@@ -190,12 +211,18 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="aspect-video relative rounded-lg overflow-hidden mb-4">
-                <img
-                  src={program.image}
-                  alt={program.name}
-                  className="object-cover w-full h-full"
-                />
+              <div className="aspect-video relative rounded-lg overflow-hidden mb-4 bg-muted">
+                {program.nftDesign?.image ? (
+                  <img
+                    src={program.nftDesign.image || "/placeholder.svg"}
+                    alt={program.name}
+                    className="object-cover w-full h-full"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Store className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                )}
               </div>
               <p className="text-muted-foreground">{program.description}</p>
             </CardContent>
@@ -206,9 +233,7 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
               <CardTitle>Reward Structure</CardTitle>
               <CardDescription>How to earn and redeem rewards</CardDescription>
             </CardHeader>
-            <CardContent>
-              {renderRewardStructure()}
-            </CardContent>
+            <CardContent>{renderRewardStructure()}</CardContent>
           </Card>
         </div>
 
@@ -220,30 +245,42 @@ export default function ProgramPage({ params }: { params: { id: string } }) {
             <CardContent className="space-y-4">
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                <span>{program.participants.toLocaleString()} participants</span>
+                <span>{program.participants.length.toLocaleString()} participants</span>
               </div>
               <div className="flex items-center gap-2">
                 <Trophy className="h-4 w-4 text-muted-foreground" />
-                <span>{program.rewards_claimed || 0} rewards claimed</span>
+                <span>{program.rewards_claimed.toLocaleString()} rewards claimed</span>
               </div>
               <div className="flex items-center gap-2">
                 <Wallet className="h-4 w-4 text-muted-foreground" />
-                <span>{program.isOpenEnded ? 'Open-ended program' : 'Limited-time program'}</span>
+                <span>{program.isOpenEnded ? "Open-ended program" : "Limited-time program"}</span>
               </div>
             </CardContent>
             <CardFooter>
-              {walletData?.type === 'user' && (
-                <Button 
-                  className="w-full" 
-                  disabled={isJoined || loading}
-                  onClick={handleJoinProgram}
-                >
-                  {loading ? 'Joining...' : isJoined ? 'Already Joined' : 'Join Program'}
+              {walletData?.type === "user" && (
+                <Button className="w-full" disabled={isJoined || joinLoading} onClick={handleJoinProgram}>
+                  {joinLoading ? "Joining..." : isJoined ? "Already Joined" : "Join Program"}
                   <Gift className="ml-2 h-4 w-4" />
+                </Button>
+              )}
+              {walletData?.type === "merchant" && walletData.publicAddress === program.merchant_address && (
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => router.push(`/merchant/programs/${program.id}/manage`)}
+                >
+                  Manage Program
+                  <Store className="ml-2 h-4 w-4" />
                 </Button>
               )}
             </CardFooter>
           </Card>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
         </div>
       </div>
     </div>

@@ -82,7 +82,8 @@ async function cleanupWalletTypes(currentMnemonic?: string) {
   }
 }
 
-function setNavigationLock(): boolean {
+// Export the function so it can be used by other modules
+export function setNavigationLock(): boolean {
   if (typeof window === "undefined") return false
 
   try {
@@ -102,7 +103,7 @@ function setNavigationLock(): boolean {
   }
 }
 
-function clearNavigationLock(): void {
+export function clearNavigationLock(): void {
   if (typeof window === "undefined") return
   try {
     localStorage.removeItem(NAVIGATION_LOCK_KEY)
@@ -117,9 +118,16 @@ export async function getWalletData(): Promise<WalletData | null> {
   try {
     debug("Getting wallet data")
 
+    // Check navigation lock before proceeding
+    if (!setNavigationLock()) {
+      debug("Navigation lock active, waiting...")
+      return null
+    }
+
     // In development, return session data
     if (DEBUG && sessionWalletData) {
       debug("Returning session wallet data")
+      clearNavigationLock()
       return sessionWalletData
     }
 
@@ -127,6 +135,7 @@ export async function getWalletData(): Promise<WalletData | null> {
     const data = localStorage.getItem(STORAGE_KEYS.WALLET_DATA)
     if (!data) {
       debug("No wallet data found")
+      clearNavigationLock()
       return null
     }
 
@@ -135,11 +144,13 @@ export async function getWalletData(): Promise<WalletData | null> {
       walletData = JSON.parse(data)
     } catch (parseError) {
       debug("Failed to parse wallet data:", parseError)
+      clearNavigationLock()
       return null
     }
 
     if (!validateWalletData(walletData)) {
       debug("Invalid wallet data")
+      clearNavigationLock()
       return null
     }
 
@@ -147,9 +158,11 @@ export async function getWalletData(): Promise<WalletData | null> {
     walletData.path = `/${walletData.type}`
 
     debug("Successfully retrieved wallet data")
+    clearNavigationLock()
     return walletData
   } catch (err) {
     console.error("Failed to get wallet data:", err)
+    clearNavigationLock()
     return null
   }
 }
@@ -160,7 +173,13 @@ export async function setWalletData(data: WalletData): Promise<void> {
   try {
     debug("Setting wallet data")
 
+    // Check navigation lock before proceeding
+    if (!setNavigationLock()) {
+      throw new Error("Navigation lock active")
+    }
+
     if (!validateWalletData(data)) {
+      clearNavigationLock()
       throw new Error("Invalid wallet data")
     }
 
@@ -187,8 +206,10 @@ export async function setWalletData(data: WalletData): Promise<void> {
     }
 
     window.dispatchEvent(new Event("walletUpdated"))
+    clearNavigationLock()
   } catch (err) {
     console.error("Failed to set wallet data:", err)
+    clearNavigationLock()
     throw err
   }
 }
@@ -198,6 +219,11 @@ export async function clearWalletData(): Promise<void> {
 
   try {
     debug("Clearing wallet data")
+
+    // Check navigation lock before proceeding
+    if (!setNavigationLock()) {
+      throw new Error("Navigation lock active")
+    }
 
     // Clear session data in development
     if (DEBUG) {
@@ -211,10 +237,11 @@ export async function clearWalletData(): Promise<void> {
     }
 
     localStorage.removeItem(STORAGE_KEYS.WALLET_DATA)
-    clearNavigationLock()
     window.dispatchEvent(new Event("walletUpdated"))
+    clearNavigationLock()
   } catch (err) {
     console.error("Failed to clear wallet data:", err)
+    clearNavigationLock()
   }
 }
 
@@ -222,16 +249,23 @@ export async function getStoredWalletType(mnemonic: string): Promise<"user" | "m
   if (typeof window === "undefined") return null
 
   try {
+    // Check navigation lock before proceeding
+    if (!setNavigationLock()) {
+      throw new Error("Navigation lock active")
+    }
+
     const typeKey = `${STORAGE_KEYS.WALLET_TYPE_PREFIX}${await hashMnemonic(mnemonic)}`
     const storedType = localStorage.getItem(typeKey)
     debug("Getting stored wallet type:", storedType)
 
+    clearNavigationLock()
     if (storedType === "user" || storedType === "merchant") {
       return storedType
     }
     return null
   } catch (err) {
     console.error("Failed to get stored wallet type:", err)
+    clearNavigationLock()
     return null
   }
 }

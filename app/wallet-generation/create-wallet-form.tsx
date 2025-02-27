@@ -1,12 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
-import { Wallet, Store, Copy, Check, AlertTriangle } from "lucide-react"
+import { Wallet, Store, Copy, Check, AlertTriangle } from 'lucide-react'
 import { generateWallet } from "@/lib/bsv/wallet"
 import { setWalletData, getWalletData, clearWalletData } from "@/lib/storage"
 import {
@@ -25,7 +24,6 @@ const CreateWalletForm = dynamic(() => Promise.resolve(CreateWalletFormComponent
 export default CreateWalletForm
 
 function CreateWalletFormComponent() {
-  const router = useRouter()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")

@@ -1,9 +1,22 @@
-'use client'
+"use client"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import type { Program } from '@/lib/utils/program-utils'
-import type { WalletData } from '@/types'
+import type { WalletData } from "@/types"
+
+// Define Program type inline until we establish the correct shared location
+type ProgramType = "punch-card" | "points" | "tiered" | "coalition"
+
+interface Program {
+  id: string
+  name: string
+  businessName?: string
+  description?: string
+  type: ProgramType
+  category?: string
+  participants: string[]
+  pointsPerReward?: number
+}
 
 interface ProgramsListProps {
   programs: Program[]
@@ -12,12 +25,7 @@ interface ProgramsListProps {
   onJoinProgram: (program: Program) => void
 }
 
-export function ProgramsList({
-  programs,
-  walletData,
-  joinedPrograms,
-  onJoinProgram
-}: ProgramsListProps) {
+export function ProgramsList({ programs, walletData, joinedPrograms, onJoinProgram }: ProgramsListProps) {
   if (programs.length === 0) {
     return (
       <div className="text-center py-8">
@@ -37,16 +45,14 @@ export function ProgramsList({
             </div>
             <p className="text-sm">{program.description}</p>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">
-                {program.participants.length} participants
-              </span>
-              {walletData?.type === 'user' && (
+              <span className="text-sm text-muted-foreground">{program.participants.length} participants</span>
+              {walletData?.type === "user" && (
                 <Button
                   variant={joinedPrograms.includes(program.id) ? "secondary" : "default"}
                   onClick={() => onJoinProgram(program)}
                   disabled={joinedPrograms.includes(program.id)}
                 >
-                  {joinedPrograms.includes(program.id) ? 'Joined' : 'Join Program'}
+                  {joinedPrograms.includes(program.id) ? "Joined" : "Join Program"}
                 </Button>
               )}
             </div>

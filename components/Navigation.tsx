@@ -28,7 +28,6 @@ function shortenAddress(address: string): string {
 
 // Add merchant routes to public paths
 const PUBLIC_PATHS = ["/", "/about", "/test-bsv", "/merchant/create-program", "/merchant/create-program/coupon-book"]
-const MERCHANT_PATHS = ["/merchant"]
 
 export default function Navigation() {
   const router = useRouter()

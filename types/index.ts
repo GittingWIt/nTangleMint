@@ -1,5 +1,8 @@
 import type { PROGRAM_TYPES } from "@/lib/constants"
 
+// Update the type to use the values from PROGRAM_TYPES
+export type ProgramType = (typeof PROGRAM_TYPES)[keyof typeof PROGRAM_TYPES]
+
 export interface WalletData {
   type: "user" | "merchant"
   publicAddress: string
@@ -15,7 +18,7 @@ export interface Program {
   name: string
   businessName: string
   description: string
-  type: keyof typeof PROGRAM_TYPES
+  type: ProgramType
   category: string
   participants: string[]
   rewards: {
@@ -28,6 +31,7 @@ export interface Program {
   }
   rewards_claimed: number
   merchant_address: string
+  isOpenEnded: boolean // Added this property
 }
 
 export interface UserParticipation {
