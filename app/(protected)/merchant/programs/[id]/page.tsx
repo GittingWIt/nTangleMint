@@ -14,7 +14,7 @@ import { getProgram } from "@/lib/storage"
 import { getWalletData } from "@/lib/storage"
 import { updateProgram } from "@/lib/storage"
 import { ArrowLeft, Save, Plus, X } from "lucide-react"
-import type { Program } from "@/types"
+import type { Program, ProgramStatus, ProgramMetadata } from "@/types"
 
 // Add this near the top of the file
 const ERROR_MESSAGES = {
@@ -68,7 +68,8 @@ export default function ProgramDetails({ params }: { params: { id: string } }) {
     if (!program) return
 
     try {
-      const newStatus = program.status === "active" ? "inactive" : "active"
+      // Fix: Use proper ProgramStatus type instead of string
+      const newStatus: ProgramStatus = program.status === "active" ? "paused" : "active"
 
       if (newStatus === "active") {
         const isValid = validateProgramData(formData)
@@ -121,16 +122,21 @@ export default function ProgramDetails({ params }: { params: { id: string } }) {
         return
       }
 
-      const updatedProgram = {
+      // Fix: Ensure metadata properties are properly typed
+      const updatedMetadata: ProgramMetadata = {
+        ...program.metadata,
+        ...(formData.metadata || {}),
+        // Ensure discountAmount is always a string
+        discountAmount: formData.metadata?.discountAmount || program.metadata.discountAmount || "",
+        // Ensure upcCodes is always an array
+        upcCodes: formData.metadata?.upcCodes || program.metadata.upcCodes || [],
+      }
+
+      const updatedProgram: Program = {
         ...program,
-        name: formData.name,
-        description: formData.description,
-        metadata: {
-          ...program.metadata,
-          ...formData.metadata,
-          discountAmount: formData.metadata?.discountAmount,
-          upcCodes: formData.metadata?.upcCodes || [],
-        },
+        name: formData.name || program.name,
+        description: formData.description || program.description,
+        metadata: updatedMetadata,
         updatedAt: new Date().toISOString(),
       }
 

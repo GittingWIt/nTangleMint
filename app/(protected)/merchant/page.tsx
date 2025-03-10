@@ -9,8 +9,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { usePrograms } from "@/hooks/use-programs"
 import { useWalletData } from "@/hooks/use-wallet-data"
 import { MerchantProgramCard } from "./components/merchant-program-card"
-import type { ProgramType } from "@/types"
 import { Search, Plus, Loader2 } from "lucide-react"
+import type { Program } from "@/types"
 
 export default function MerchantDashboard() {
   const router = useRouter()
@@ -18,27 +18,35 @@ export default function MerchantDashboard() {
   const { programs, isLoading, error, refresh } = usePrograms({
     autoRefresh: true,
     refreshInterval: 5000,
-    merchantAddress: walletData?.publicAddress,
+    ...(walletData?.publicAddress ? { merchantAddress: walletData.publicAddress } : {}),
   })
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedType, setSelectedType] = useState<ProgramType | "all">("all")
 
-  // Also update the filteredPrograms logic to filter out any undefined values
+  // Fix the filtering logic to properly handle program description
   const filteredPrograms = programs
-    .filter((program) => program !== undefined) // Filter out undefined programs
+    .filter((program): program is Program => program !== undefined)
     .filter((program) => {
       const matchesSearch =
         program.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         program.description.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesType = selectedType === "all" || program.type === selectedType
-      return matchesSearch && matchesType
+      return matchesSearch
     })
 
-  // Calculate statistics
+  // Calculate statistics with a more defensive approach
   const stats = {
     totalPrograms: programs.length,
-    totalParticipants: programs.reduce((sum, p) => sum + (p.stats?.participantCount || 0), 0),
-    totalRewards: programs.reduce((sum, p) => sum + (p.stats?.rewardsRedeemed || 0), 0),
+    totalParticipants: programs.reduce((sum, p) => {
+      // Use a more defensive approach to access potentially missing properties
+      const stats = (p as any).stats
+      const participantCount = stats?.participantCount || 0
+      return sum + participantCount
+    }, 0),
+    totalRewards: programs.reduce((sum, p) => {
+      // Use a more defensive approach to access potentially missing properties
+      const stats = (p as any).stats
+      const rewardsRedeemed = stats?.rewardsRedeemed || 0
+      return sum + rewardsRedeemed
+    }, 0),
   }
 
   if (error) {

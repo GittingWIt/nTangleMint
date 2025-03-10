@@ -46,9 +46,14 @@ export async function testRestoreWallet(type: "user" | "merchant" = "user"): Pro
     console.log("[Test Restore] Generating original wallet")
     const originalWallet = await generateWallet(undefined, type)
 
+    // Make sure mnemonic exists before proceeding
+    if (!originalWallet.mnemonic) {
+      throw new Error("Generated wallet is missing mnemonic phrase")
+    }
+
     // Store original wallet data
     results.originalWallet = {
-      mnemonic: originalWallet.mnemonic,
+      mnemonic: originalWallet.mnemonic, // Now we know this is not undefined
       publicAddress: originalWallet.publicAddress,
       type: originalWallet.type,
       privateKey: originalWallet.privateKey,

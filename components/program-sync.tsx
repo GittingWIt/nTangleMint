@@ -16,8 +16,16 @@ export function ProgramSync() {
         // Check for new program in cookies
         const cookies = document.cookie.split(";").reduce(
           (acc, cookie) => {
-            const [key, value] = cookie.trim().split("=")
-            acc[key] = value
+            const parts = cookie.trim().split("=")
+            // Only process cookies with valid key-value pairs
+            if (parts.length === 2) {
+              const key = parts[0]
+              const value = parts[1]
+              // Ensure both key and value are defined
+              if (key && value !== undefined) {
+                acc[key] = value
+              }
+            }
             return acc
           },
           {} as Record<string, string>,

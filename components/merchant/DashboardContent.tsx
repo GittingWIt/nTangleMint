@@ -5,8 +5,14 @@ import { Plus, Users, Wallet, BarChart3, ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useWalletData } from "@/hooks/useWalletData"
+import { useWalletData } from "@/hooks/use-wallet-data"
 import type { Program } from "@/types" // Updated import
+
+// Define an extended program type that includes the properties we need
+interface ExtendedProgram extends Program {
+  participants: string[] // Remove the ? to make it required
+  rewards_claimed?: number
+}
 
 interface DashboardContentProps {
   programs: Program[]
@@ -15,8 +21,17 @@ interface DashboardContentProps {
 export function DashboardContent({ programs }: DashboardContentProps) {
   const { walletData } = useWalletData() // Updated to destructure walletData
 
-  // Filter programs for this merchant
-  const merchantPrograms = programs.filter((program) => program.merchant_address === walletData?.publicAddress)
+  // Filter programs for this merchant and cast to ExtendedProgram
+  const merchantPrograms = programs
+    .filter((program) => program.merchantAddress === walletData?.publicAddress)
+    .map(
+      (program) =>
+        ({
+          ...program,
+          participants: [], // Initialize with empty array
+          rewards_claimed: 0, // Initialize with 0
+        }) as ExtendedProgram,
+    )
 
   return (
     <div className="container max-w-7xl mx-auto p-8">
@@ -66,7 +81,11 @@ export function DashboardContent({ programs }: DashboardContentProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold mb-2">
-                  {merchantPrograms.reduce((sum, program) => sum + (program.participants?.length || 0), 0)}
+                  {merchantPrograms.reduce((sum, program) => {
+                    // Use the participants property from our ExtendedProgram
+                    const participantCount = program.participants?.length ?? 0
+                    return sum + participantCount
+                  }, 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">Across all programs</p>
                 <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary/10 via-primary/50 to-primary opacity-20" />
@@ -79,7 +98,10 @@ export function DashboardContent({ programs }: DashboardContentProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold mb-2">
-                  {merchantPrograms.reduce((sum, program) => sum + (program.rewards_claimed || 0), 0)}
+                  {merchantPrograms.reduce((sum, program) => {
+                    // Use the rewards_claimed property from our ExtendedProgram
+                    return sum + (program.rewards_claimed ?? 0)
+                  }, 0)}
                 </div>
                 <p className="text-xs text-muted-foreground">Total rewards redeemed</p>
                 <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-primary/10 via-primary/50 to-primary opacity-20" />
@@ -131,11 +153,11 @@ export function DashboardContent({ programs }: DashboardContentProps) {
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center text-muted-foreground">
                         <Users className="h-4 w-4 mr-1" />
-                        <span>{program.participants?.length || 0}</span>
+                        <span>{program.participants?.length ?? 0}</span>
                       </div>
                       <div className="flex items-center text-muted-foreground">
                         <BarChart3 className="h-4 w-4 mr-1" />
-                        <span>{program.rewards_claimed || 0} claimed</span>
+                        <span>{program.rewards_claimed ?? 0} claimed</span>
                       </div>
                     </div>
                   </CardContent>

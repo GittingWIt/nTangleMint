@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { usePrograms } from "@/hooks/use-programs"
+import type { Program, ProgramType } from "@/types"
 
 interface CouponBookSelectorProps {
   onSelect: (bookId: string) => void
@@ -14,12 +15,20 @@ interface CouponBookSelectorProps {
   className?: string
 }
 
+// Define an extended program type that includes the type property
+interface ExtendedProgram extends Program {
+  type: ProgramType
+}
+
 export function CouponBookSelector({ onSelect, selectedId, className }: CouponBookSelectorProps) {
   const [open, setOpen] = useState(false)
   const { programs } = usePrograms()
 
   // Filter to only show coupon books
-  const couponBooks = programs.filter((p) => p.type === "coupon-book")
+  // Use type assertion to treat programs as ExtendedProgram[]
+  const couponBooks = programs
+    .filter((p): p is ExtendedProgram => "type" in p) // Type guard to ensure 'type' exists
+    .filter((p) => p.type === "coupon-book")
 
   // Find selected book
   const selectedBook = couponBooks.find((book) => book.id === selectedId)

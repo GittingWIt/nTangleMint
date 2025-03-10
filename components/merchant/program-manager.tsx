@@ -15,26 +15,43 @@ import { UPCLookup } from "@/components/upc-lookup"
 import { useWalletData } from "@/hooks/use-wallet-data"
 import { usePrograms } from "@/hooks/use-programs"
 import { Loader2, Plus, Edit2, Save, X } from "lucide-react"
-import type { Program } from "@/types"
+
+// Define the Product type to match what UPCLookup expects
+interface Product {
+  upc: string
+  name: string
+  manufacturer: string
+  category: string
+}
 
 interface ProgramFormData {
   name: string
   description: string
   discountAmount: string
   expirationDate: Date | undefined
-  products: Array<{
-    upc: string
-    name: string
-    manufacturer: string
-  }>
+  products: Product[]
+}
+
+// Define a custom interface for our program data that includes the metadata we need
+interface ProgramWithMetadata {
+  id: string
+  name: string
+  description: string
+  merchantAddress: string
+  status: string
+  metadata?: {
+    discountAmount?: string
+    expirationDate?: string
+    upcCodes?: string[]
+  }
 }
 
 export function ProgramManager() {
   const router = useRouter()
   const { walletData, isLoading: walletLoading } = useWalletData()
-  const { programs, refresh } = usePrograms({
-    merchantAddress: walletData?.publicAddress,
-  })
+
+  // Only pass merchantAddress if walletData exists
+  const { programs, refresh } = usePrograms(walletData ? { merchantAddress: walletData.publicAddress } : {})
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState<ProgramFormData>({
@@ -104,18 +121,19 @@ export function ProgramManager() {
   }
 
   // Load program data for editing
-  const handleEdit = (program: Program) => {
+  const handleEdit = (program: ProgramWithMetadata) => {
     setEditingId(program.id)
     setFormData({
       name: program.name,
-      description: program.description,
-      discountAmount: program.metadata.discountAmount || "",
-      expirationDate: program.metadata.expirationDate ? new Date(program.metadata.expirationDate) : undefined,
+      description: program.description || "",
+      discountAmount: program.metadata?.discountAmount || "",
+      expirationDate: program.metadata?.expirationDate ? new Date(program.metadata.expirationDate) : undefined,
       products:
-        program.metadata.upcCodes?.map((upc) => ({
+        program.metadata?.upcCodes?.map((upc) => ({
           upc,
           name: "Product Name", // You would typically load this from your product database
           manufacturer: "Manufacturer",
+          category: "General", // Added default category
         })) || [],
     })
   }
@@ -130,6 +148,15 @@ export function ProgramManager() {
       expirationDate: undefined,
       products: [],
     })
+  }
+
+  // Create a default date (30 days from now) for the DatePicker
+  const defaultExpirationDate = new Date()
+  defaultExpirationDate.setDate(defaultExpirationDate.getDate() + 30)
+
+  // Handle date change with proper typing
+  const handleDateChange = (date: Date | undefined) => {
+    setFormData((prev) => ({ ...prev, expirationDate: date }))
   }
 
   if (walletLoading) {
@@ -189,10 +216,7 @@ export function ProgramManager() {
 
             <div className="space-y-2">
               <Label>Expiration Date</Label>
-              <DatePicker
-                date={formData.expirationDate}
-                setDate={(date) => setFormData((prev) => ({ ...prev, expirationDate: date }))}
-              />
+              <DatePicker date={formData.expirationDate || defaultExpirationDate} setDate={handleDateChange} />
             </div>
 
             <div className="space-y-2">
@@ -238,27 +262,43 @@ export function ProgramManager() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {programs.map((program) => (
-          <Card key={program.id}>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{program.name}</CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => handleEdit(program)} disabled={isSubmitting}>
-                  <Edit2 className="h-4 w-4" />
-                  <span className="sr-only">Edit program</span>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground mb-2">{program.description}</p>
-              <div className="text-sm">
-                <p>Discount: ${program.metadata.discountAmount}</p>
-                <p>Products: {program.metadata.upcCodes?.length || 0}</p>
-                <p>Expires: {new Date(program.metadata.expirationDate || "").toLocaleDateString()}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {programs.map((program) => {
+          // Cast program to ProgramWithMetadata to access the properties we need
+          const programWithMetadata = program as unknown as ProgramWithMetadata
+          return (
+            <Card key={programWithMetadata.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{programWithMetadata.name}</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEdit(programWithMetadata)}
+                    disabled={isSubmitting}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    <span className="sr-only">Edit program</span>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-2">
+                  {programWithMetadata.description || "No description"}
+                </p>
+                <div className="text-sm">
+                  <p>Discount: ${programWithMetadata.metadata?.discountAmount || "0"}</p>
+                  <p>Products: {programWithMetadata.metadata?.upcCodes?.length || 0}</p>
+                  <p>
+                    Expires:{" "}
+                    {programWithMetadata.metadata?.expirationDate
+                      ? new Date(programWithMetadata.metadata.expirationDate).toLocaleDateString()
+                      : "N/A"}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
     </div>
   )

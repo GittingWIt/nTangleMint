@@ -44,6 +44,7 @@ export async function createCouponBookProgram(
       status: "draft", // Changed from 'active' to 'draft'
       version: 1,
       isPublic: false, // Changed from true to false
+      participants: [], // Add the required participants array
       metadata: {
         discountAmount: formData.get("discountAmount") as string,
         discountType: "fixed",

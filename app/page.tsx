@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import type { WalletData, Program } from "@/types"
+import type { WalletData, Program, ProgramType, ProgramStatus, ProgramMetadata, ProgramStats } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -58,70 +58,76 @@ export default function Home() {
     // Add more mock coupons as needed
   ]
 
-  // Fallback programs if none are found in storage
-  const fallbackPrograms = [
+  // Fallback programs if none are found in storage - properly typed as Program[]
+  const fallbackPrograms: Program[] = [
     {
       id: "punch-1",
-      type: "punch-card",
+      type: "punch-card" as ProgramType,
       name: "Coffee Lovers Card",
       description: "Buy 9 coffees, get 1 free",
       merchantAddress: "merchant-123",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: "active",
+      status: "active" as ProgramStatus,
       version: 1,
       isPublic: true,
+      participants: [], // Add the required participants array
       metadata: {
         icon: "store",
         merchant: "Local Coffee Shop",
-      },
+      } as ProgramMetadata,
       stats: {
         participantCount: 128,
         rewardsIssued: 450,
         rewardsRedeemed: 0,
-      },
+        totalValue: 4500,
+      } as ProgramStats,
     },
     {
       id: "coupon-1",
-      type: "coupon-book",
+      type: "coupon-book" as ProgramType,
       name: "Downtown Deals",
       description: "Digital coupon book for local shops",
       merchantAddress: "merchant-456",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: "active",
+      status: "active" as ProgramStatus,
       version: 1,
       isPublic: true,
+      participants: [], // Add the required participants array
       metadata: {
         icon: "ticket",
         merchant: "Downtown Association",
-      },
+      } as ProgramMetadata,
       stats: {
         participantCount: 256,
         rewardsIssued: 890,
         rewardsRedeemed: 0,
-      },
+        totalValue: 8900,
+      } as ProgramStats,
     },
     {
       id: "points-1",
-      type: "points",
+      type: "points" as ProgramType,
       name: "Dining Points",
       description: "Earn points on every meal",
       merchantAddress: "merchant-789",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: "active",
+      status: "active" as ProgramStatus,
       version: 1,
       isPublic: true,
+      participants: [], // Add the required participants array
       metadata: {
         icon: "gift",
         merchant: "Restaurant Group",
-      },
+      } as ProgramMetadata,
       stats: {
         participantCount: 512,
         rewardsIssued: 1200,
         rewardsRedeemed: 0,
-      },
+        totalValue: 12000,
+      } as ProgramStats,
     },
   ]
 
@@ -302,8 +308,8 @@ export default function Home() {
                       <ProgramCard
                         key={program.id}
                         program={program}
-                        userType={userData?.type}
-                        userWalletAddress={userData?.wallet?.publicAddress}
+                        userType={userData?.type || null}
+                        userWalletAddress={userData?.wallet?.publicAddress || null}
                         onJoin={() => {
                           if (!userData) {
                             window.location.href = "/wallet-generation"
@@ -326,8 +332,8 @@ export default function Home() {
                           <ProgramCard
                             key={program.id}
                             program={program}
-                            userType={userData?.type}
-                            userWalletAddress={userData?.wallet?.publicAddress}
+                            userType={userData?.type || null}
+                            userWalletAddress={userData?.wallet?.publicAddress || null}
                             onJoin={() => {
                               if (!userData) {
                                 window.location.href = "/wallet-generation"

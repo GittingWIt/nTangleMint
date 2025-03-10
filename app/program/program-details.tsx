@@ -17,9 +17,25 @@ interface ProgramDetailsProps {
   programId: string
 }
 
+// Define an extended program type that includes the properties we need
+interface ExtendedProgram extends Program {
+  participants: string[]
+  businessName: string
+  rewards: Array<{
+    description: string
+    threshold: number
+  }>
+  rewards_claimed: number
+  isOpenEnded: boolean
+  merchant_address: string
+  nftDesign?: {
+    image?: string
+  }
+}
+
 export default function ProgramDetails({ programId }: ProgramDetailsProps) {
   const router = useRouter()
-  const [program, setProgram] = useState<Program | null>(null)
+  const [program, setProgram] = useState<ExtendedProgram | null>(null)
   const [walletData, setWalletData] = useState<Awaited<ReturnType<typeof getWalletData>> | null>(null)
   const [isJoined, setIsJoined] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -39,7 +55,7 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
         // Load program data
         // In production, this would be an API call
         const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
-        const foundProgram = globalPrograms.find((p: Program) => p.id === programId)
+        const foundProgram = globalPrograms.find((p: ExtendedProgram) => p.id === programId)
 
         if (!foundProgram) {
           setError("Program not found")
@@ -76,7 +92,7 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
 
       // Update program participants
       const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
-      const updatedPrograms = globalPrograms.map((p: Program) => {
+      const updatedPrograms = globalPrograms.map((p: ExtendedProgram) => {
         if (p.id === program.id) {
           return { ...p, participants: [...p.participants, walletData.publicAddress] }
         }

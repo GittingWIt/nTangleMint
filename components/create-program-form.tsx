@@ -19,11 +19,19 @@ export function CreateProgramForm() {
   const router = useRouter()
   const { wallet } = useWallet()
   const [error, setError] = useState<string | null>(null)
-  const [date, setDate] = useState<Date>()
+  // Initialize with a default date (30 days from now)
+  const [date, setDate] = useState<Date>(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedProducts, setSelectedProducts] = useState<any[]>([])
   const mountedRef = useRef(false)
   const formRef = useRef<HTMLFormElement>(null)
+
+  // Create a wrapper function for setDate that can handle undefined
+  const handleDateChange = (newDate: Date | undefined) => {
+    if (newDate) {
+      setDate(newDate)
+    }
+  }
 
   // Track component mount for Fast Refresh detection
   useEffect(() => {
@@ -82,10 +90,6 @@ export function CreateProgramForm() {
       formData.append("walletType", currentWallet.type)
 
       // Add required fields
-      if (!date) {
-        throw new Error("Please select an expiration date")
-      }
-
       const upcCodes = selectedProducts.map((p) => p.upc).join(",")
       formData.append("upcCodes", upcCodes)
       formData.append("expirationDate", date.toISOString())
@@ -162,7 +166,7 @@ export function CreateProgramForm() {
 
       <div className="space-y-2">
         <Label htmlFor="expirationDate">Program Expiration Date</Label>
-        <DatePicker date={date} setDate={setDate} />
+        <DatePicker date={date} setDate={handleDateChange} />
       </div>
 
       <div className="space-y-2">

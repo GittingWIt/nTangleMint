@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getWalletData, setWalletData, clearWalletData, debugStorage } from "@/lib/storage"
 import { mockMerchantWallet } from "@/lib/mock/wallet-data"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Bug, Beaker, FileCode } from "lucide-react"
+import { Loader2, Bug, Beaker, FileCode } from 'lucide-react'
 import { testCouponBookCreation, testWalletStatePersistence, testFormSubmission } from "@/lib/test-utils"
 
 export function DebugWallet() {
@@ -119,6 +119,12 @@ export function DebugWallet() {
       setTestResults(null)
 
       const result = await testWalletStatePersistence()
+      
+      // Check if result is defined before using it
+      if (!result) {
+        throw new Error("Test returned no results")
+      }
+      
       setTestResults(result)
 
       if (result.success) {
@@ -142,6 +148,12 @@ export function DebugWallet() {
       setTestResults(null)
 
       const result = await testFormSubmission()
+      
+      // Check if result is defined before using it
+      if (!result) {
+        throw new Error("Test returned no results")
+      }
+      
       setTestResults(result)
 
       if (result.success) {

@@ -1,128 +1,156 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
-import { ErrorBoundary } from "@/components/ui/error-boundary"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import ErrorBoundary from "@/components/ErrorBoundary"
+import { AlertCircle, CheckCircle } from "lucide-react"
 
-// Debug logging utility
-const debugLog = (message: string, data?: any) => {
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[DiagnosticTest] ${message}`, data || "")
-  }
-}
+export function DiagnosticTest() {
+  const [testResults, setTestResults] = useState<{
+    localStorage: boolean
+    indexedDB: boolean
+    serviceWorker: boolean
+    webWorker: boolean
+  }>({
+    localStorage: false,
+    indexedDB: false,
+    serviceWorker: false,
+    webWorker: false,
+  })
 
-export default function DiagnosticTest() {
-  const [basicButtonClicks, setBasicButtonClicks] = useState(0)
-  const [dropdownWithAsChildClicks, setDropdownWithAsChildClicks] = useState(0)
-  const [dropdownWithoutAsChildClicks, setDropdownWithoutAsChildClicks] = useState(0)
-  const [selectedItem, setSelectedItem] = useState<string | null>(null)
-  const [dropdownWithAsChildOpen, setDropdownWithAsChildOpen] = useState(false)
-  const [dropdownWithoutAsChildOpen, setDropdownWithoutAsChildOpen] = useState(false)
-  const [dropdownWithAsChildWasOpened, setDropdownWithAsChildWasOpened] = useState(false)
-  const [dropdownWithoutAsChildWasOpened, setDropdownWithoutAsChildWasOpened] = useState(false)
+  const [isRunning, setIsRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleBasicButtonClick = useCallback(() => {
-    debugLog("Basic button clicked")
-    setBasicButtonClicks((prev) => prev + 1)
-  }, [])
+  const runTests = async () => {
+    setIsRunning(true)
+    setError(null)
 
-  const handleDropdownStateChange = useCallback((open: boolean, type: "withAsChild" | "withoutAsChild") => {
-    debugLog(`Dropdown ${type} state changed`, { open })
-    if (type === "withAsChild") {
-      setDropdownWithAsChildOpen(open)
-      if (open) {
-        setDropdownWithAsChildClicks((prev) => prev + 1)
-        setDropdownWithAsChildWasOpened(true)
-      }
-    } else {
-      setDropdownWithoutAsChildOpen(open)
-      if (open) {
-        setDropdownWithoutAsChildClicks((prev) => prev + 1)
-        setDropdownWithoutAsChildWasOpened(true)
-      }
+    try {
+      // Test localStorage
+      const localStorageTest = testLocalStorage()
+
+      // Test IndexedDB
+      const indexedDBTest = await testIndexedDB()
+
+      // Test Service Worker
+      const serviceWorkerTest = await testServiceWorker()
+
+      // Test Web Worker
+      const webWorkerTest = await testWebWorker()
+
+      setTestResults({
+        localStorage: localStorageTest,
+        indexedDB: indexedDBTest,
+        serviceWorker: serviceWorkerTest,
+        webWorker: webWorkerTest,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error occurred")
+    } finally {
+      setIsRunning(false)
     }
-  }, [])
+  }
 
-  const handleItemSelect = useCallback((item: string) => {
-    debugLog("Item selected", { item })
-    setSelectedItem(item)
-  }, [])
+  const testLocalStorage = (): boolean => {
+    try {
+      localStorage.setItem("test", "test")
+      const value = localStorage.getItem("test")
+      localStorage.removeItem("test")
+      return value === "test"
+    } catch {
+      return false
+    }
+  }
+
+  const testIndexedDB = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      try {
+        const request = indexedDB.open("testDB", 1)
+        request.onerror = () => resolve(false)
+        request.onsuccess = () => {
+          const db = request.result
+          db.close()
+          indexedDB.deleteDatabase("testDB")
+          resolve(true)
+        }
+      } catch {
+        resolve(false)
+      }
+    })
+  }
+
+  const testServiceWorker = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (!("serviceWorker" in navigator)) {
+        resolve(false)
+        return
+      }
+      resolve(true)
+    })
+  }
+
+  const testWebWorker = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (!window.Worker) {
+        resolve(false)
+        return
+      }
+      resolve(true)
+    })
+  }
 
   return (
     <ErrorBoundary>
-      <div className="space-y-8">
-        <div className="space-y-4 border p-4 rounded-md">
-          <h2 className="text-xl font-semibold">Test 1: Basic Button</h2>
-          <div className="space-y-2">
-            <Button onClick={handleBasicButtonClick}>Basic Button</Button>
-            <p className="text-sm text-muted-foreground">Button clicked: {basicButtonClicks} times</p>
-          </div>
-        </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Browser Compatibility Test</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {error && <div className="p-3 bg-red-50 text-red-700 rounded-md">{error}</div>}
 
-        <div className="space-y-4 border p-4 rounded-md">
-          <h2 className="text-xl font-semibold">Test 2: DropdownMenu with asChild=true</h2>
           <div className="space-y-2">
-            <DropdownMenu
-              open={dropdownWithAsChildOpen}
-              onOpenChange={(open) => handleDropdownStateChange(open, "withAsChild")}
-            >
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">Dropdown with asChild ({dropdownWithAsChildClicks} clicks)</Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Test Menu</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => handleItemSelect("With asChild: Item 1")}>Item 1</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleItemSelect("With asChild: Item 2")}>Item 2</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="flex items-center justify-between">
+              <span>LocalStorage</span>
+              {testResults.localStorage ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-gray-300" />
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span>IndexedDB</span>
+              {testResults.indexedDB ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-gray-300" />
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Service Worker</span>
+              {testResults.serviceWorker ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-gray-300" />
+              )}
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Web Worker</span>
+              {testResults.webWorker ? (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              ) : (
+                <AlertCircle className="h-5 w-5 text-gray-300" />
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="space-y-4 border p-4 rounded-md">
-          <h2 className="text-xl font-semibold">Test 3: DropdownMenu without asChild</h2>
-          <div className="space-y-2">
-            <DropdownMenu
-              open={dropdownWithoutAsChildOpen}
-              onOpenChange={(open) => handleDropdownStateChange(open, "withoutAsChild")}
-            >
-              <DropdownMenuTrigger>
-                Dropdown without asChild ({dropdownWithoutAsChildClicks} clicks)
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Test Menu</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => handleItemSelect("Without asChild: Item 1")}>Item 1</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => handleItemSelect("Without asChild: Item 2")}>Item 2</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        <div className="mt-8 p-4 bg-green-50 border border-green-200 rounded-md">
-          <h2 className="text-lg font-semibold text-green-800">Test Results:</h2>
-          <ul className="list-disc pl-5 space-y-2 text-green-700">
-            <li>Basic Button: {basicButtonClicks > 0 ? "Working ✅" : "Not clicked yet"}</li>
-            <li>Dropdown Button (with asChild): {dropdownWithAsChildClicks > 0 ? "Working ✅" : "Not clicked yet"}</li>
-            <li>
-              Dropdown Button (without asChild): {dropdownWithoutAsChildClicks > 0 ? "Working ✅" : "Not clicked yet"}
-            </li>
-            <li>Dropdown Menu (with asChild): {dropdownWithAsChildWasOpened ? "Can open ✅" : "Not opened yet"}</li>
-            <li>
-              Dropdown Menu (without asChild): {dropdownWithoutAsChildWasOpened ? "Can open ✅" : "Not opened yet"}
-            </li>
-            {selectedItem && <li>Last Selected Item: {selectedItem} ✅</li>}
-          </ul>
-        </div>
-      </div>
+          <Button onClick={runTests} disabled={isRunning} className="w-full">
+            {isRunning ? "Running Tests..." : "Run Compatibility Tests"}
+          </Button>
+        </CardContent>
+      </Card>
     </ErrorBoundary>
   )
 }
+
+export default DiagnosticTest

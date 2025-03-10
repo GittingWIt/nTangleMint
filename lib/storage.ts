@@ -1,7 +1,18 @@
-import type { WalletData, Program } from "@/types"
+import type { WalletData, Program, ProgramStats } from "@/types"
 import { mockMerchantWallet } from "./mock/wallet-data"
 import { STORAGE_KEYS, STORAGE_EVENTS } from "./constants"
 import { debug } from "./debug"
+// import { v4 as uuidv4 } from "uuid"
+
+// Replace the uuid import with this function
+function generateUUID(): string {
+  // This is a simple UUID v4 implementation
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === "x" ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
 
 // Define constants locally to avoid import errors
 const DEBUG = process.env.NODE_ENV === "development"
@@ -84,7 +95,8 @@ function validateWalletData(data: any): data is WalletData {
   return true
 }
 
-async function cleanupWalletTypes(currentMnemonic?: string) {
+// Update the cleanupWalletTypes function to be exported
+export async function cleanupWalletTypes(currentMnemonic?: string) {
   if (typeof window === "undefined") return
 
   try {
@@ -374,10 +386,7 @@ export async function getPrograms(): Promise<Program[]> {
     }
 
     // Filter out invalid programs
-    return programs.filter(
-      (program) =>
-        program && typeof program === "object" && typeof program.id === "string" && typeof program.name === "string",
-    )
+    return programs.filter(validateProgram)
   } catch (error) {
     console.error("Failed to get programs:", error)
     return []
@@ -445,31 +454,32 @@ function validateProgram(program: unknown): program is Program {
 }
 
 // Update the addProgram function to be more robust
-export async function addProgram(program: Program): Promise<void> {
-  if (typeof window === "undefined") return
+export async function addProgram(program: Omit<Program, "id">): Promise<Program> {
+  if (typeof window === "undefined") {
+    throw new Error("window is undefined")
+  }
 
   try {
-    debug("Adding program:", program.id)
-
-    // Get existing programs
-    const existingPrograms = await getPrograms()
-
-    // Add new program
-    const updatedPrograms = [...existingPrograms, program]
-
-    // Store updated programs
-    localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(updatedPrograms))
+    const id = generateUUID() // Use our custom function instead of uuidv4()
+    const newProgram: Program = {
+      ...program,
+      id,
+      description: program.description || "", // Ensure description is initialized
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    const programs = await getPrograms()
+    programs.push(newProgram)
+    localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(programs))
 
     // Dispatch event
-    window.dispatchEvent(
-      new CustomEvent(STORAGE_EVENTS.PROGRAM_CREATED, {
-        detail: { program },
-      }),
-    )
+    window.dispatchEvent(new CustomEvent("programsUpdated"))
 
     debug("Program added successfully")
+    return newProgram
   } catch (error) {
     console.error("Failed to add program:", error)
+    handleStorageError(error as Error, "addProgram") // Handle storage errors
     throw error
   }
 }
@@ -483,6 +493,107 @@ export async function getProgram(id: string): Promise<Program | null> {
     return programs.find((p) => p.id === id) || null
   } catch (error) {
     console.error("Failed to get program:", error)
+    handleStorageError(error as Error, "getProgram") // Handle storage errors
     return null
+  }
+}
+
+// Create a default ProgramStats object
+const createDefaultStats = (): ProgramStats => ({
+  participantCount: 0,
+  rewardsIssued: 0,
+  rewardsRedeemed: 0,
+  totalValue: 0,
+})
+
+// Helper function to handle optional properties with exactOptionalPropertyTypes
+function getOptionalProperty<T>(
+  updates: Partial<Program>,
+  key: keyof Program,
+  originalValue: T | undefined,
+  defaultValue: T,
+): T {
+  // If the property exists in updates, use it
+  if (key in updates) {
+    const value = updates[key] as unknown as T
+    // If the value is undefined, use the default
+    return value !== undefined ? value : defaultValue
+  }
+  // Otherwise use the original value or default
+  return originalValue !== undefined ? originalValue : defaultValue
+}
+
+// Add this to lib/storage.ts if it's not already there
+export async function updateProgram(id: string, updates: Partial<Program>): Promise<void> {
+  if (typeof window === "undefined") return
+
+  try {
+    debug("Updating program:", id)
+    const programs = await getPrograms()
+    const index = programs.findIndex((p) => p.id === id)
+
+    if (index === -1) {
+      throw new Error(`Program ${id} not found`)
+    }
+
+    // Get the original program
+    const originalProgram = programs[index]
+
+    // Add explicit check to satisfy TypeScript
+    if (!originalProgram) {
+      throw new Error(`Program ${id} found at index but is undefined`)
+    }
+
+    // Handle stats properly - ensure it's never undefined
+    const originalStats = originalProgram.stats || createDefaultStats()
+    const updatedStats = updates.stats ? { ...originalStats, ...updates.stats } : originalStats
+
+    // Create the updated program with explicit required properties
+    // This ensures TypeScript knows these properties are definitely present
+    const updatedProgram: Program = {
+      // Required properties explicitly copied from original
+      id: originalProgram.id,
+      type: updates.type || originalProgram.type,
+      name: updates.name || originalProgram.name,
+      description: updates.description || originalProgram.description,
+      createdAt: originalProgram.createdAt,
+      updatedAt: new Date().toISOString(),
+      merchantAddress: updates.merchantAddress || originalProgram.merchantAddress,
+      status: updates.status || originalProgram.status,
+      metadata: { ...originalProgram.metadata, ...(updates.metadata || {}) },
+      version: updates.version || originalProgram.version,
+      isPublic: updates.isPublic !== undefined ? updates.isPublic : originalProgram.isPublic,
+      stats: updatedStats, // Use the properly handled stats
+      participants: updates.participants || originalProgram.participants || [], // Add the participants property
+
+      // Handle optional properties properly
+      previousVersionId: getOptionalProperty(updates, "previousVersionId", originalProgram.previousVersionId, ""),
+      allowedParticipants: getOptionalProperty(updates, "allowedParticipants", originalProgram.allowedParticipants, []),
+      maxParticipants: getOptionalProperty(updates, "maxParticipants", originalProgram.maxParticipants, 0),
+      perUserLimit: getOptionalProperty(updates, "perUserLimit", originalProgram.perUserLimit, 0),
+      requiresReceipt: getOptionalProperty(updates, "requiresReceipt", originalProgram.requiresReceipt, false),
+      minimumAge: getOptionalProperty(updates, "minimumAge", originalProgram.minimumAge, 0),
+      geographicRestrictions: getOptionalProperty(
+        updates,
+        "geographicRestrictions",
+        originalProgram.geographicRestrictions,
+        [],
+      ),
+    }
+
+    // Replace the program in the array
+    programs[index] = updatedProgram
+
+    // Save updated programs
+    localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(programs))
+
+    // Dispatch event
+    window.dispatchEvent(new CustomEvent("programsUpdated"))
+
+    debug("Program updated successfully")
+  } catch (error) {
+    console.error("Failed to update program:", error)
+    handleStorageError(error as Error, "updateProgram") // Handle storage errors
+    throw error
   }
 }

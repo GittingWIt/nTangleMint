@@ -221,12 +221,17 @@ async function initializeWallet(
     // Derive keys
     const { privateKey, publicKey, address } = await deriveKeysFromSeed(seed, type, !!password)
 
+    // Create timestamp for createdAt and updatedAt
+    const timestamp = new Date().toISOString()
+
     const wallet: WalletData = {
       mnemonic: normalizedMnemonic,
       privateKey: privateKey.toString(),
       publicKey: publicKey.toString(),
       publicAddress: address,
       type,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     }
 
     // Verify wallet data before storage

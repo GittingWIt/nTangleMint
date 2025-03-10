@@ -24,6 +24,7 @@ export async function createOrUpdateProgram(formData: FormData): Promise<{ succe
       status: "active",
       version: 1,
       isPublic: true,
+      participants: [], // Add the required participants array
       metadata: {
         discountAmount: formData.get("discountAmount") as string,
         discountType: "fixed",

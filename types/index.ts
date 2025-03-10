@@ -7,6 +7,16 @@ export interface WalletData {
   createdAt: string
   updatedAt: string
   path?: string
+  // Add merchant-specific properties
+  businessName?: string
+  businessId?: string
+}
+
+export interface MerchantWalletData extends WalletData {
+  type: "merchant"
+  businessName: string
+  businessId: string
+  verified: boolean
 }
 
 export interface Program {
@@ -29,6 +39,18 @@ export interface Program {
   requiresReceipt?: boolean
   minimumAge?: number
   geographicRestrictions?: string[]
+  // For backward compatibility with existing code
+  merchant_address?: string
+  participants: string[]
+  rewards_claimed?: number
+}
+
+export interface UserParticipation {
+  programId: string
+  points: number
+  punchCount: number
+  tier: number
+  joinedAt: string
 }
 
 export type ProgramType = "coupon-book" | "punch-card" | "points" | "tiered" | "coalition"

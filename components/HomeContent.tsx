@@ -16,7 +16,8 @@ import { ProgramsList } from "./ProgramsList"
 // Define Program type inline until we establish the correct import location
 type ProgramType = "punch-card" | "points" | "tiered" | "coalition"
 
-interface Program {
+// Define a local ExtendedProgram interface that extends the imported Program type
+interface ExtendedProgram {
   id: string
   name: string
   businessName?: string
@@ -45,7 +46,7 @@ export default function HomeContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<(typeof categories)[number]>("All")
   const [selectedType, setSelectedType] = useState<ProgramTypeValue>("all")
-  const [allPrograms, setAllPrograms] = useState<Program[]>([])
+  const [allPrograms, setAllPrograms] = useState<ExtendedProgram[]>([])
   const [joinedPrograms, setJoinedPrograms] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,7 +58,17 @@ export default function HomeContent() {
         setWalletData(data)
 
         const programs = programUtils.getAllPrograms()
-        setAllPrograms(Array.isArray(programs) ? programs : [])
+
+        // Convert the programs to ExtendedProgram type
+        const extendedPrograms: ExtendedProgram[] = Array.isArray(programs)
+          ? programs.map((p) => ({
+              ...p,
+              participants: [], // Initialize with empty array instead of trying to access p.participants
+              type: p.type as ProgramType,
+            }))
+          : []
+
+        setAllPrograms(extendedPrograms)
 
         if (data?.type === "user") {
           const userParticipation = programUtils.getUserParticipation(data.publicAddress)
@@ -79,7 +90,7 @@ export default function HomeContent() {
     return () => window.removeEventListener("walletUpdated", checkWalletStatus)
   }, [])
 
-  const handleJoinProgram = (program: Program) => {
+  const handleJoinProgram = (program: ExtendedProgram) => {
     if (!walletData) {
       router.push("/wallet-generation")
       return

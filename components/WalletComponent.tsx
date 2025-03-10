@@ -1,3 +1,5 @@
+"use client"
+
 import type React from "react"
 import { useState } from "react"
 import { generateMnemonic, validateMnemonic } from "bip39"
@@ -16,13 +18,15 @@ const WalletComponent: React.FC = () => {
         throw new Error("Invalid mnemonic generated")
       }
 
-      // Temporary placeholder values for required properties
+      // Create wallet data with all required properties
       const walletData: WalletData = {
         type: "user",
         publicAddress: `bsv-${Date.now()}`,
         mnemonic: mnemonic,
         privateKey: "placeholder-private-key",
         publicKey: "placeholder-public-key",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }
 
       await setWalletData(walletData)

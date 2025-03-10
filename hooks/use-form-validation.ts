@@ -24,13 +24,22 @@ export function useFormValidation(initialState: FormState, validationRules: Vali
     let formIsValid = true
 
     // Check each field against its validation rule
-    Object.keys(validationRules).forEach((field) => {
-      const isValidField = validationRules[field](values[field])
-      if (!isValidField) {
-        newErrors[field] = `${field} is invalid`
+    for (const field of Object.keys(validationRules)) {
+      // Make sure both the field and validation rule exist
+      const validationRule = validationRules[field]
+
+      if (typeof validationRule === "function" && field in values) {
+        const isValidField = validationRule(values[field])
+        if (!isValidField) {
+          newErrors[field] = `${field} is invalid`
+          formIsValid = false
+        }
+      } else {
+        // Either field doesn't exist in values or validation rule is not a function
+        newErrors[field] = `${field} is missing or has no validation rule`
         formIsValid = false
       }
-    })
+    }
 
     setErrors(newErrors)
     setIsValid(formIsValid)

@@ -85,8 +85,14 @@ export async function testWalletLifecycle(attempts = 3): Promise<WalletLifecycle
 
     // Step 1: Generate initial wallet
     const initialWallet = await generateWallet(undefined, "merchant")
+    
+    // Check if mnemonic exists
+    if (!initialWallet.mnemonic) {
+      throw new Error("Generated wallet is missing mnemonic phrase")
+    }
+    
     result.original = {
-      mnemonic: initialWallet.mnemonic,
+      mnemonic: initialWallet.mnemonic, // Now we know this is not undefined
       privateKey: initialWallet.privateKey,
       publicKey: initialWallet.publicKey,
       address: initialWallet.publicAddress,

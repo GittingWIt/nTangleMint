@@ -8,6 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useWalletData } from "@/hooks/use-wallet-data"
 import type { Program } from "@/types"
 
+// Define an extended program type that includes the participants property
+interface ExtendedProgram extends Program {
+  participants: string[] // Remove the ? to make it required
+}
+
 interface DashboardContentProps {
   programs: Program[]
   isLoading: boolean
@@ -25,7 +30,8 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
     return <div className="container max-w-7xl mx-auto p-8">Error loading programs: {error}</div>
   }
 
-  const participatingPrograms = programs.filter((program) =>
+  // Cast programs to ExtendedProgram[] to use the participants property
+  const participatingPrograms = (programs as ExtendedProgram[]).filter((program) =>
     program.participants?.some((p) => p === walletData?.publicAddress),
   )
 

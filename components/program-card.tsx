@@ -71,6 +71,22 @@ export function ProgramCard({ program, onJoin, userType, userWalletAddress }: Pr
     )
   }
 
+  // Get merchant name from metadata or use a fallback
+  const getMerchantName = () => {
+    // Check if metadata exists and has a merchant property
+    if (program.metadata && 'merchant' in program.metadata) {
+      return (program.metadata as any).merchant || "Unknown Merchant"
+    }
+    
+    // Fallback: Try to get a business name if available
+    if ('businessName' in program) {
+      return (program as any).businessName || "Unknown Merchant"
+    }
+    
+    // Final fallback
+    return "Unknown Merchant"
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -84,7 +100,7 @@ export function ProgramCard({ program, onJoin, userType, userWalletAddress }: Pr
       <CardContent>
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground">
-            By {program.metadata?.merchant || "Unknown Merchant"}
+            By {getMerchantName()}
             {isOwner && <span className="ml-2 text-primary font-medium">(Your Program)</span>}
           </div>
           <div className="flex justify-between text-sm">

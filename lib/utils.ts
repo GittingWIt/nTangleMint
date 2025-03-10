@@ -1,16 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import * as React from "react"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
-}
-
-// Utility for handling React 19 refs safely
-export function createForwardRef<T, P extends object>(
-  render: (props: P, ref: React.Ref<T>) => React.ReactElement | null,
-) {
-  return React.forwardRef<T, P>(render)
 }
 
 // Type-safe event handler

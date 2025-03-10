@@ -1,12 +1,13 @@
-import type React from "react"
 import { Loader2 } from "lucide-react"
+import type { LucideProps } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-interface LoadingSpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
+interface LoadingSpinnerProps {
   size?: "sm" | "md" | "lg"
+  className?: string
 }
 
-export function LoadingSpinner({ size = "md", className, ...props }: LoadingSpinnerProps) {
+export function LoadingSpinner({ size = "md", className, ...props }: LoadingSpinnerProps & LucideProps) {
   const sizeClasses = {
     sm: "h-4 w-4",
     md: "h-6 w-6",
@@ -15,6 +16,3 @@ export function LoadingSpinner({ size = "md", className, ...props }: LoadingSpin
 
   return <Loader2 className={cn("animate-spin text-muted-foreground", sizeClasses[size], className)} {...props} />
 }
-
-
-

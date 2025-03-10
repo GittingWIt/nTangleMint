@@ -29,18 +29,13 @@ async function getPrograms(): Promise<Program[]> {
   })
 }
 
-const STORAGE_KEYS = {
-  PROGRAMS: "programs",
-}
-
-const STORAGE_EVENTS = {
-  PROGRAM_CREATED: "program_created",
-}
+// Define the storage key as a simple string instead of an object
+const PROGRAMS_STORAGE_KEY = "programs"
 
 // Update the usePrograms hook to handle program updates better
-
 export function usePrograms(options: UseProgramsOptions = {}) {
-  const { autoRefresh = true, refreshInterval = 5000, merchantAddress } = options
+  // Only destructure the merchantAddress since we're not using the other options
+  const { merchantAddress } = options
   const [programs, setPrograms] = useState<Program[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
@@ -81,7 +76,7 @@ export function usePrograms(options: UseProgramsOptions = {}) {
 
       try {
         setIsLoading(true)
-        const data = localStorage.getItem("programs")
+        const data = localStorage.getItem(PROGRAMS_STORAGE_KEY)
         const programs = data ? JSON.parse(data) : []
 
         if (merchantAddress) {
@@ -93,7 +88,7 @@ export function usePrograms(options: UseProgramsOptions = {}) {
         setError(null)
       } catch (err) {
         console.error("Failed to load programs:", err)
-        setError(err instanceof Error ? err.message : "Failed to load programs")
+        setError(err instanceof Error ? err : new Error("Failed to load programs"))
       } finally {
         if (mountedRef.current) {
           setIsLoading(false)
@@ -107,14 +102,14 @@ export function usePrograms(options: UseProgramsOptions = {}) {
     const handleProgramsUpdated = () => loadPrograms()
     window.addEventListener("programsUpdated", handleProgramsUpdated)
     window.addEventListener("storage", (e) => {
-      if (e.key === "programs") loadPrograms()
+      if (e.key === PROGRAMS_STORAGE_KEY) loadPrograms()
     })
 
     return () => {
       mountedRef.current = false
       window.removeEventListener("programsUpdated", handleProgramsUpdated)
       window.removeEventListener("storage", (e) => {
-        if (e.key === "programs") loadPrograms()
+        if (e.key === PROGRAMS_STORAGE_KEY) loadPrograms()
       })
     }
   }, [merchantAddress])

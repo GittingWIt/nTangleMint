@@ -10,8 +10,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { ArrowLeft, Save, Plus, X } from "lucide-react"
-import type { Program } from "@/types"
+import { ArrowLeft, Save, Plus, X } from 'lucide-react'
+import type { Program, ProgramStatus, ProgramMetadata } from "@/types"
 
 // Add this near the top of the file
 const ERROR_MESSAGES = {
@@ -49,7 +49,8 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
 
   const handleStatusToggle = async () => {
     try {
-      const newStatus = program.status === "active" ? "inactive" : "active"
+      // Fix: Use proper ProgramStatus type instead of string
+      const newStatus: ProgramStatus = program.status === "active" ? "paused" : "active"
 
       if (newStatus === "active") {
         const isValid = validateProgramData(formData)
@@ -59,7 +60,7 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
         }
       }
 
-      const updatedProgram = {
+      const updatedProgram: Program = {
         ...program,
         status: newStatus,
         isPublic: newStatus === "active",
@@ -99,16 +100,19 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
         return
       }
 
-      const updatedProgram = {
+      // Fix: Create properly typed metadata and program objects
+      const updatedMetadata: ProgramMetadata = {
+        ...program.metadata,
+        ...(formData.metadata || {}),
+        discountAmount: formData.metadata?.discountAmount || program.metadata.discountAmount || "",
+        upcCodes: formData.metadata?.upcCodes || program.metadata.upcCodes || [],
+      }
+
+      const updatedProgram: Program = {
         ...program,
         name: formData.name,
         description: formData.description,
-        metadata: {
-          ...program.metadata,
-          ...formData.metadata,
-          discountAmount: formData.metadata?.discountAmount,
-          upcCodes: formData.metadata?.upcCodes || [],
-        },
+        metadata: updatedMetadata,
         updatedAt: new Date().toISOString(),
       }
 
@@ -245,6 +249,7 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
                         {upc}
                         {isEditing && (
                           <button
+                            type="button"
                             onClick={() => handleRemoveUpcCode(upc)}
                             className="text-muted-foreground hover:text-foreground"
                           >
@@ -260,7 +265,7 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
                         placeholder="Enter UPC code"
                         value={newUpcCode}
                         onChange={(e) => setNewUpcCode(e.target.value)}
-                        onKeyPress={(e) => {
+                        onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault()
                             handleAddUpcCode()
@@ -294,7 +299,7 @@ export function ProgramDetailsClient({ initialProgram }: ProgramDetailsClientPro
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="mt-6">
         <CardHeader>
           <CardTitle>Program Statistics</CardTitle>
         </CardHeader>

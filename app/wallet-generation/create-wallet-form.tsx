@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
-import { Wallet, Store, Copy, Check, AlertTriangle } from 'lucide-react'
+import { Wallet, Store, Copy, Check, AlertTriangle } from "lucide-react"
 import { generateWallet } from "@/lib/bsv/wallet"
 import { setWalletData, getWalletData, clearWalletData } from "@/lib/storage"
 import {
@@ -55,8 +55,13 @@ function CreateWalletFormComponent() {
       const wallet = await generateWallet(password, walletType)
       console.log("[Wallet Generation] Generated wallet with type:", wallet.type)
 
+      // Check if mnemonic exists
+      if (!wallet.mnemonic) {
+        throw new Error("Failed to generate wallet recovery phrase")
+      }
+
       setGeneratedWallet(wallet)
-      setGeneratedMnemonic(wallet.mnemonic)
+      setGeneratedMnemonic(wallet.mnemonic) // Now we know this is not undefined
       setShowSeedPhrase(true)
       setCopied(false)
       setConfirmed(false)
