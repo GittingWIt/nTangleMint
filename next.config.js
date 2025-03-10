@@ -2,7 +2,11 @@
 const webpack = require("webpack")
 
 const nextConfig = {
+  reactStrictMode: true,
   transpilePackages: ["@testing-library/react"],
+  images: {
+    domains: ["placeholder.com"],
+  },
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
@@ -24,7 +28,6 @@ const nextConfig = {
         }),
       )
 
-      // Force BSV to be resolved from node_modules
       config.resolve.alias = {
         ...config.resolve.alias,
         bsv: require.resolve("bsv"),
@@ -32,6 +35,11 @@ const nextConfig = {
     }
 
     return config
+  },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
   },
 }
 

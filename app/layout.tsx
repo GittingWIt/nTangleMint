@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
+import { WalletProvider } from "@/components/wallet-provider"
+import Navigation from "@/components/Navigation"
 import "@/styles/globals.css"
 import type React from "react"
-import Link from "next/link"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -17,28 +19,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <nav className="bg-gray-100 p-4">
-          <ul className="flex space-x-4">
-            <li>
-              <Link href="/" className="hover:underline">
-                Home
-              </Link>
-            </li>
-            <li>
-              <Link href="/test-bsv" className="hover:underline">
-                BSV Tests
-              </Link>
-            </li>
-            <li>
-              <Link href="/test-bsv/lifecycle-test" className="hover:underline">
-                Lifecycle Test
-              </Link>
-            </li>
-          </ul>
-        </nav>
-        {children}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <WalletProvider>
+            <div className="relative min-h-screen flex flex-col">
+              <Navigation />
+              <main className="flex-1">{children}</main>
+            </div>
+          </WalletProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

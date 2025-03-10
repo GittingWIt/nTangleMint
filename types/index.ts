@@ -1,43 +1,66 @@
-import type { PROGRAM_TYPES } from "@/lib/constants"
-
-// Update the type to use the values from PROGRAM_TYPES
-export type ProgramType = (typeof PROGRAM_TYPES)[keyof typeof PROGRAM_TYPES]
-
 export interface WalletData {
-  type: "user" | "merchant"
-  publicAddress: string
-  businessName?: string
-  path?: string
-  mnemonic: string
+  mnemonic?: string
   privateKey: string
   publicKey: string
+  publicAddress: string
+  type: "user" | "merchant"
+  createdAt: string
+  updatedAt: string
+  path?: string
 }
 
 export interface Program {
   id: string
-  name: string
-  businessName: string
-  description: string
   type: ProgramType
-  category: string
-  participants: string[]
-  rewards: {
-    description: string
-    threshold: number
-  }[]
-  nftDesign?: {
-    image?: string
-    color?: string
-  }
-  rewards_claimed: number
-  merchant_address: string
-  isOpenEnded: boolean // Added this property
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+  merchantAddress: string
+  status: ProgramStatus
+  metadata: ProgramMetadata
+  stats?: ProgramStats
+  version: number
+  previousVersionId?: string
+  isPublic: boolean
+  allowedParticipants?: string[]
+  maxParticipants?: number
+  perUserLimit?: number
+  requiresReceipt?: boolean
+  minimumAge?: number
+  geographicRestrictions?: string[]
 }
 
-export interface UserParticipation {
-  programId: string
-  points: number
-  punchCount: number
-  tier: number
-  joinedAt: string
+export type ProgramType = "coupon-book" | "punch-card" | "points" | "tiered" | "coalition"
+
+export type ProgramStatus = "draft" | "active" | "paused" | "expired" | "cancelled"
+
+export interface ProgramStats {
+  participantCount: number
+  rewardsIssued: number
+  rewardsRedeemed: number
+  totalValue: number
+}
+
+export interface ProgramMetadata {
+  image?: string
+  startDate?: string
+  endDate?: string
+  terms?: string
+  discountAmount?: string
+  discountType?: "percentage" | "fixed"
+  expirationDate?: string
+  upcCodes?: string[]
+  requiredPunches?: number
+  reward?: string
+  pointsPerDollar?: number
+  minimumPurchase?: number
+  redemptionRatio?: number
+  tiers?: {
+    name: string
+    threshold: number
+    benefits: string[]
+  }[]
+  partnerAddresses?: string[]
+  revenueShare?: number
 }

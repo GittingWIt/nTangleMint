@@ -1,4 +1,66 @@
 import "@testing-library/jest-dom"
+import "jest-environment-jsdom"
+
+// Mock next/navigation
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    refresh: jest.fn(),
+  }),
+  usePathname: () => "",
+}))
+
+// Mock environment variables
+process.env = {
+  ...process.env,
+  NEXT_PUBLIC_TEST_MODE: "true",
+  NEXT_PUBLIC_REACT_VERSION: "19.0.0",
+  NEXT_PUBLIC_NEXT_VERSION: "15.0.0",
+  NEXT_PUBLIC_RADIX_DROPDOWN_VERSION: "2.0.6",
+  NEXT_PUBLIC_RADIX_SLOT_VERSION: "1.0.2",
+}
+
+// Mock Radix UI Portal for testing - using a much simpler approach
+jest.mock("@radix-ui/react-dropdown-menu", () => {
+  const actual = jest.requireActual("@radix-ui/react-dropdown-menu");
+  // Create a simple object that mimics the structure but avoids JSX
+  return {
+    ...actual,
+    Portal: function(props: any) {
+      return props.children;
+    }
+  };
+});
+
+// Mock ResizeObserver
+global.ResizeObserver = class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
+// Mock IntersectionObserver with proper typing
+global.IntersectionObserver = class MockIntersectionObserver {
+  root: Element | null = null;
+  rootMargin: string = "0px";
+  thresholds: ReadonlyArray<number> = [0];
+  
+  // Use the callback parameter to avoid the unused variable warning
+  constructor(callback: IntersectionObserverCallback) {
+    // Store callback in a private field to avoid the unused variable warning
+    Object.defineProperty(this, '_callback', {
+      value: callback,
+      writable: false,
+      enumerable: false
+    });
+  }
+  
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] { return []; }
+};
 
 // Mock window.crypto for tests
 Object.defineProperty(window, "crypto", {

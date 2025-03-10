@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import type { WalletData } from "@/types" // Updated import path
+import type { WalletData, Program } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Badge } from "@/components/ui/badge"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Store, Ticket, Gift, Trophy, Users, ShoppingBag, ArrowRight, Search } from "lucide-react"
-import { getWalletData } from "@/lib/storage"
+import { getWalletData, getPrograms } from "@/lib/storage"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Input } from "@/components/ui/input"
+import { ProgramCard } from "@/components/program-card"
 
 interface UserType {
   type: "user" | "merchant"
@@ -33,6 +33,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeTab, setActiveTab] = useState("featured")
+  const [programs, setPrograms] = useState<Program[]>([])
 
   // Mock coupons data
   const coupons: Coupon[] = [
@@ -57,39 +58,77 @@ export default function Home() {
     // Add more mock coupons as needed
   ]
 
-  const programs = [
+  // Fallback programs if none are found in storage
+  const fallbackPrograms = [
     {
+      id: "punch-1",
       type: "punch-card",
-      title: "Coffee Lovers Card",
+      name: "Coffee Lovers Card",
       description: "Buy 9 coffees, get 1 free",
-      merchant: "Local Coffee Shop",
-      icon: <Store className="w-6 h-6" />,
-      participants: 128,
-      rewards: 450,
+      merchantAddress: "merchant-123",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "active",
+      version: 1,
+      isPublic: true,
+      metadata: {
+        icon: "store",
+        merchant: "Local Coffee Shop",
+      },
+      stats: {
+        participantCount: 128,
+        rewardsIssued: 450,
+        rewardsRedeemed: 0,
+      },
     },
     {
+      id: "coupon-1",
       type: "coupon-book",
-      title: "Downtown Deals",
+      name: "Downtown Deals",
       description: "Digital coupon book for local shops",
-      merchant: "Downtown Association",
-      icon: <Ticket className="w-6 h-6" />,
-      participants: 256,
-      rewards: 890,
+      merchantAddress: "merchant-456",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "active",
+      version: 1,
+      isPublic: true,
+      metadata: {
+        icon: "ticket",
+        merchant: "Downtown Association",
+      },
+      stats: {
+        participantCount: 256,
+        rewardsIssued: 890,
+        rewardsRedeemed: 0,
+      },
     },
     {
+      id: "points-1",
       type: "points",
-      title: "Dining Points",
+      name: "Dining Points",
       description: "Earn points on every meal",
-      merchant: "Restaurant Group",
-      icon: <Gift className="w-6 h-6" />,
-      participants: 512,
-      rewards: 1200,
+      merchantAddress: "merchant-789",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "active",
+      version: 1,
+      isPublic: true,
+      metadata: {
+        icon: "gift",
+        merchant: "Restaurant Group",
+      },
+      stats: {
+        participantCount: 512,
+        rewardsIssued: 1200,
+        rewardsRedeemed: 0,
+      },
     },
   ]
 
   useEffect(() => {
-    const checkWallet = async () => {
+    const loadData = async () => {
       try {
+        // Load wallet data
         const walletData = await getWalletData()
         if (walletData?.type) {
           setUserData({
@@ -99,15 +138,46 @@ export default function Home() {
         } else {
           setUserData(null)
         }
+
+        // Load programs
+        const storedPrograms = await getPrograms()
+
+        // Filter for active and public programs only
+        const activePrograms = storedPrograms.filter(
+          (program) => program.status === "active" && program.isPublic === true,
+        )
+
+        // Use stored programs if available, otherwise use fallback
+        setPrograms(activePrograms.length > 0 ? activePrograms : fallbackPrograms)
       } catch (error) {
-        console.error("Error checking wallet:", error)
+        console.error("Error loading data:", error)
         setUserData(null)
+        setPrograms(fallbackPrograms)
       } finally {
         setIsLoading(false)
       }
     }
 
-    checkWallet()
+    loadData()
+
+    // Set up event listener for program updates
+    const handleProgramsUpdated = async () => {
+      try {
+        const storedPrograms = await getPrograms()
+        const activePrograms = storedPrograms.filter(
+          (program) => program.status === "active" && program.isPublic === true,
+        )
+        setPrograms(activePrograms.length > 0 ? activePrograms : fallbackPrograms)
+      } catch (error) {
+        console.error("Error updating programs:", error)
+      }
+    }
+
+    window.addEventListener("programsUpdated", handleProgramsUpdated)
+
+    return () => {
+      window.removeEventListener("programsUpdated", handleProgramsUpdated)
+    }
   }, [])
 
   const filteredCoupons = coupons.filter(
@@ -189,7 +259,7 @@ export default function Home() {
                 Analyze program performance
               </li>
             </ul>
-            <Link href={userData?.type === "merchant" ? "/merchant" : "/wallet-generation"}>
+            <Link href={userData?.type === "merchant" ? "/(protected)/merchant" : "/wallet-generation"}>
               <Button className="w-full">
                 {userData?.type === "merchant" ? "Merchant Dashboard" : "Create Program"}
               </Button>
@@ -228,27 +298,19 @@ export default function Home() {
               <TabsContent value="all" className="mt-0">
                 <ScrollArea className="h-[500px] pr-4">
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {programs.map((program, index) => (
-                      <Card key={index}>
-                        <CardHeader>
-                          <div className="flex justify-between items-start">
-                            {program.icon}
-                            <Badge>{program.type}</Badge>
-                          </div>
-                          <CardTitle className="mt-4">{program.title}</CardTitle>
-                          <CardDescription>{program.description}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="space-y-4">
-                            <div className="text-sm text-muted-foreground">By {program.merchant}</div>
-                            <div className="flex justify-between text-sm">
-                              <span>{program.participants} participants</span>
-                              <span>{program.rewards} rewards claimed</span>
-                            </div>
-                            <Button className="w-full">Join Program</Button>
-                          </div>
-                        </CardContent>
-                      </Card>
+                    {programs.map((program) => (
+                      <ProgramCard
+                        key={program.id}
+                        program={program}
+                        userType={userData?.type}
+                        userWalletAddress={userData?.wallet?.publicAddress}
+                        onJoin={() => {
+                          if (!userData) {
+                            window.location.href = "/wallet-generation"
+                          }
+                          // Handle join program logic here
+                        }}
+                      />
                     ))}
                   </div>
                 </ScrollArea>
@@ -260,27 +322,19 @@ export default function Home() {
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {programs
                         .filter((program) => program.type === type)
-                        .map((program, index) => (
-                          <Card key={index}>
-                            <CardHeader>
-                              <div className="flex justify-between items-start">
-                                {program.icon}
-                                <Badge>{program.type}</Badge>
-                              </div>
-                              <CardTitle className="mt-4">{program.title}</CardTitle>
-                              <CardDescription>{program.description}</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="space-y-4">
-                                <div className="text-sm text-muted-foreground">By {program.merchant}</div>
-                                <div className="flex justify-between text-sm">
-                                  <span>{program.participants} participants</span>
-                                  <span>{program.rewards} rewards claimed</span>
-                                </div>
-                                <Button className="w-full">Join Program</Button>
-                              </div>
-                            </CardContent>
-                          </Card>
+                        .map((program) => (
+                          <ProgramCard
+                            key={program.id}
+                            program={program}
+                            userType={userData?.type}
+                            userWalletAddress={userData?.wallet?.publicAddress}
+                            onJoin={() => {
+                              if (!userData) {
+                                window.location.href = "/wallet-generation"
+                              }
+                              // Handle join program logic here
+                            }}
+                          />
                         ))}
                     </div>
                   </ScrollArea>

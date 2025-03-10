@@ -5,7 +5,7 @@ import { Wallet, Ticket, Gift, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useWalletData } from "@/hooks/useWalletData"
+import { useWalletData } from "@/hooks/use-wallet-data"
 import type { Program } from "@/types"
 
 interface DashboardContentProps {

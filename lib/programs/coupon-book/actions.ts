@@ -54,7 +54,7 @@ const storage: StorageOperations = {
   },
 }
 
-export const createCouponBookActions = () => {
+export async function createCouponBookActions() {
   const createProgram = async (
     program: Omit<CouponBookProgram, "id" | "createdAt" | "updatedAt" | "type">,
   ): Promise<CouponBookProgram> => {
@@ -412,7 +412,7 @@ export const createCouponBookActions = () => {
     }
   }
 
-  const actions = {
+  return {
     createProgram,
     updateProgram,
     deleteProgram,
@@ -426,7 +426,5 @@ export const createCouponBookActions = () => {
     getCouponStatus,
     getCoupons,
     getUserCoupons,
-  }
-
-  return actions satisfies ProgramAction<CouponBookProgram> & CouponBookActions
+  } satisfies ProgramAction<CouponBookProgram> & CouponBookActions
 }

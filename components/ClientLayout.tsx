@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react"
 import type React from "react"
-import Navigation from "./Navigation"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
-import { getWalletData, debugStorage } from "@/lib/storage"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { getWalletData, debugStorage } from "@/lib/storage"
 import { usePathname, useRouter } from "next/navigation"
+import { PUBLIC_PATHS, MERCHANT_PATHS } from "@/lib/constants"
+import { ThemeProvider } from "@/components/theme-provider"
 
 const DEBUG = process.env.NODE_ENV === "development"
 const RETRY_DELAY = 500
@@ -17,21 +18,7 @@ function debug(...args: any[]) {
   }
 }
 
-// Include the full merchant create program path in PUBLIC_PATHS
-const PUBLIC_PATHS = [
-  "/wallet-generation",
-  "/wallet-restoration",
-  "/",
-  "/about",
-  "/test-bsv",
-  "/test-bsv/lifecycle-test",
-  "/test-bsv/comprehensive-test",
-  "/test-bsv/single-test",
-  "/merchant/create-program",
-  "/merchant/create-program/coupon-book",
-]
-
-export default function ClientLayout({
+function ClientLayoutInner({
   children,
 }: {
   children: React.ReactNode
@@ -49,13 +36,17 @@ export default function ClientLayout({
     let mounted = true
     let timeoutId: NodeJS.Timeout | null = null
 
-    // Skip initialization for public paths
-    if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
+    const shouldSkipInit = () => {
+      if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) return true
+      if (MERCHANT_PATHS.some((path) => pathname.startsWith(path))) return true
+      return false
+    }
+
+    if (shouldSkipInit()) {
       setIsLoading(false)
       return
     }
 
-    // Prevent multiple initializations
     if (initialized.current) {
       return
     }
@@ -73,25 +64,22 @@ export default function ClientLayout({
           debugStorage()
         }
 
-        // Only check wallet data for non-public paths
-        if (!PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
-          const walletData = await getWalletData()
-          debug("Wallet data check:", {
-            exists: !!walletData,
-            type: walletData?.type,
-            path: pathname,
-          })
+        const walletData = await getWalletData()
+        debug("Wallet data check:", {
+          exists: !!walletData,
+          type: walletData?.type,
+          path: pathname,
+        })
 
-          if (!walletData || !walletData.type || !walletData.publicAddress) {
-            if (initAttempts.current < maxAttempts) {
-              timeoutId = setTimeout(initializeLayout, RETRY_DELAY)
-              return
-            }
-            initialized.current = true
-            if (mounted) {
-              router.push("/wallet-generation")
-              return
-            }
+        if (!walletData || !walletData.type || !walletData.publicAddress) {
+          if (initAttempts.current < maxAttempts) {
+            timeoutId = setTimeout(initializeLayout, RETRY_DELAY)
+            return
+          }
+          initialized.current = true
+          if (mounted) {
+            router.push("/wallet-generation")
+            return
           }
         }
 
@@ -114,10 +102,8 @@ export default function ClientLayout({
       }
     }
 
-    // Start initialization
     initializeLayout()
 
-    // Cleanup
     return () => {
       mounted = false
       if (timeoutId) {
@@ -126,7 +112,6 @@ export default function ClientLayout({
     }
   }, [pathname, router])
 
-  // Handle wallet updates without reinitializing
   useEffect(() => {
     const handleWalletUpdate = () => {
       debug("Wallet update detected")
@@ -147,7 +132,6 @@ export default function ClientLayout({
   if (isLoading && !PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
     return (
       <div className="relative min-h-screen flex flex-col">
-        <Navigation />
         <main className="flex-1">
           <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] gap-4">
             <LoadingSpinner />
@@ -166,7 +150,6 @@ export default function ClientLayout({
   if (error && !PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
     return (
       <div className="relative min-h-screen flex flex-col">
-        <Navigation />
         <main className="flex-1">
           <div className="container mx-auto p-6">
             <Alert variant="destructive">
@@ -181,8 +164,19 @@ export default function ClientLayout({
 
   return (
     <div className="relative min-h-screen flex flex-col">
-      <Navigation />
       <main className="flex-1">{children}</main>
     </div>
+  )
+}
+
+export default function ClientLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <ClientLayoutInner>{children}</ClientLayoutInner>
+    </ThemeProvider>
   )
 }

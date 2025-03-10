@@ -1,33 +1,74 @@
-export type ProgramType = "punch-card" | "tiered" | "points" | "cashback" | "subscription"
-export type ProgramCategory = "food-beverage" | "retail" | "health-fitness" | "multi-merchant"
+export type ProgramType = "coupon-book" | "punch-card" | "points" | "tiered" | "coalition"
 
-export interface NFTDesign {
-  layers: {
-    type: string
-    content: string
-    opacity?: number
-    blendMode?: string
+export type ProgramStatus = "draft" | "active" | "paused" | "expired" | "cancelled"
+
+export interface ProgramStats {
+  participantCount: number
+  rewardsIssued: number
+  rewardsRedeemed: number
+  totalValue: number
+}
+
+export interface ProgramMetadata {
+  // Common metadata
+  image?: string
+  startDate?: string
+  endDate?: string
+  terms?: string
+
+  // Coupon Book specific
+  discountAmount?: string
+  discountType?: "percentage" | "fixed"
+  expirationDate?: string
+  upcCodes?: string[]
+
+  // Punch Card specific
+  requiredPunches?: number
+  reward?: string
+
+  // Points specific
+  pointsPerDollar?: number
+  minimumPurchase?: number
+  redemptionRatio?: number
+
+  // Tiered specific
+  tiers?: {
+    name: string
+    threshold: number
+    benefits: string[]
   }[]
-  aspectRatio: string
-  borderRadius: string
-  animation?: {
-    type: string
-    duration: number
-  }
+
+  // Coalition specific
+  partnerAddresses?: string[]
+  revenueShare?: number
 }
 
 export interface Program {
   id: string
-  name: string
-  business: string
   type: ProgramType
-  category: ProgramCategory
+  name: string
   description: string
-  rewardStructure?: string
-  isOpenEnded: boolean
-  participants: string[]
-  rewards_claimed: number
-  created_at: string
-  merchantId: string
-  nftDesign: NFTDesign
+  createdAt: string
+  updatedAt: string
+  merchantAddress: string
+  status: ProgramStatus
+  metadata: ProgramMetadata
+  stats?: ProgramStats
+
+  // Version control
+  version: number
+  previousVersionId?: string
+
+  // Access control
+  isPublic: boolean
+  allowedParticipants?: string[] // Wallet addresses
+
+  // Constraints
+  maxParticipants?: number
+  perUserLimit?: number
+
+  // Validation rules
+  requiresReceipt?: boolean
+  minimumAge?: number
+  geographicRestrictions?: string[] // ISO country/region codes
 }
