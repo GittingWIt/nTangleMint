@@ -1,192 +1,305 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { useWallet } from "@/contexts/wallet-context"
-import { walletState, trackComponentMount } from "@/lib/wallet-sync"
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { UPCLookup } from "@/components/upc-lookup"
-import { DatePicker } from "@/components/ui/date-picker"
-import { Loader2 } from "lucide-react"
-import { createCouponBookProgram } from "@/app/actions/create-program"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle } from "lucide-react"
+import { walletState } from "@/lib/wallet-sync"
+import { saveProgram } from "@/lib/programs"
 import { debug } from "@/lib/debug"
+import { UPCLookup } from "@/components/upc-lookup"
+
+// Define the Product type to match what UPCLookup expects
+interface Product {
+  upc: string
+  name: string
+  manufacturer: string
+  category: string
+}
+
+// Form schema
+const formSchema = z.object({
+  name: z.string().min(3, { message: "Program name must be at least 3 characters" }),
+  description: z.string().min(10, { message: "Description must be at least 10 characters" }),
+  discountAmount: z.string().min(1, { message: "Discount amount is required" }),
+  discountType: z.enum(["percentage", "fixed"], {
+    required_error: "Please select a discount type",
+  }),
+  expirationDate: z.string().refine(
+    (val) => {
+      const date = new Date(val)
+      return date > new Date()
+    },
+    { message: "Expiration date must be in the future" },
+  ),
+  terms: z.string().optional(),
+})
+
+// Simple function to generate a unique ID without uuid dependency
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2)
+}
 
 export function CreateProgramForm() {
-  const router = useRouter()
-  const { wallet } = useWallet()
-  const [error, setError] = useState<string | null>(null)
-  // Initialize with a default date (30 days from now)
-  const [date, setDate] = useState<Date>(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedProducts, setSelectedProducts] = useState<any[]>([])
-  const mountedRef = useRef(false)
-  const formRef = useRef<HTMLFormElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [walletStatus, setWalletStatus] = useState<"checking" | "valid" | "invalid">("checking")
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([])
+  const router = useRouter()
 
-  // Create a wrapper function for setDate that can handle undefined
-  const handleDateChange = (newDate: Date | undefined) => {
-    if (newDate) {
-      setDate(newDate)
-    }
-  }
-
-  // Track component mount for Fast Refresh detection
+  // Check wallet status on mount
   useEffect(() => {
-    trackComponentMount()
-    mountedRef.current = true
+    const checkWallet = () => {
+      const wallet = walletState.getWalletData(true)
 
-    debug("CreateProgramForm component mounted")
-
-    return () => {
-      mountedRef.current = false
-      debug("CreateProgramForm component unmounted")
+      if (wallet && wallet.publicAddress && wallet.type === "merchant") {
+        setWalletStatus("valid")
+      } else {
+        setWalletStatus("invalid")
+        setError("Your merchant wallet is not properly configured. Please refresh the page.")
+      }
     }
+
+    checkWallet()
   }, [])
 
-  async function onSubmit(formData: FormData) {
-    if (!mountedRef.current) return
+  // Initialize form
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      discountAmount: "",
+      discountType: "percentage",
+      expirationDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // Default to 30 days from now
+      terms: "",
+    },
+  })
 
+  // Handle form submission
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
       setIsSubmitting(true)
       setError(null)
 
-      debug("CreateProgramForm: Form submission started")
+      // Check wallet connection
+      const wallet = walletState.getWalletData(true)
 
-      // Get wallet data with multiple fallback strategies
-      let currentWallet = null
+      debug("Creating program with wallet:", {
+        hasWallet: !!wallet,
+        walletType: wallet?.type,
+        address: wallet?.publicAddress?.substring(0, 10) + "...",
+      })
 
-      // 1. Try context first
-      currentWallet = wallet
-      debug("CreateProgramForm: Wallet from context:", currentWallet?.publicAddress)
-
-      // 2. Try state container
-      if (!currentWallet) {
-        currentWallet = walletState.getWalletData(true)
-        debug("CreateProgramForm: Wallet from state container:", currentWallet?.publicAddress)
+      if (!wallet || !wallet.publicAddress) {
+        setError("Wallet not connected. Please refresh the page.")
+        return
       }
 
-      // 3. Try direct storage access
-      if (!currentWallet) {
-        try {
-          const storageData = localStorage.getItem("walletData")
-          if (storageData) {
-            currentWallet = JSON.parse(storageData)
-            debug("CreateProgramForm: Wallet from storage:", currentWallet?.publicAddress)
-          }
-        } catch (error) {
-          debug("CreateProgramForm: Storage access error:", error)
-        }
+      if (wallet.type !== "merchant") {
+        setError("Only merchant wallets can create programs.")
+        return
       }
 
-      if (!currentWallet?.publicAddress) {
-        throw new Error("No wallet data found. Please ensure your wallet is connected.")
+      // Extract UPC codes from selected products
+      const upcCodes = selectedProducts.map((product) => product.upc)
+
+      // Create program object
+      const program = {
+        id: generateId(), // Use our custom ID generator instead of uuid
+        type: "coupon-book" as const,
+        name: values.name,
+        description: values.description,
+        merchantAddress: wallet.publicAddress,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: "active" as const,
+        isPublic: true,
+        version: 1,
+        participants: [],
+        metadata: {
+          discountAmount: values.discountAmount,
+          discountType: values.discountType,
+          expirationDate: values.expirationDate,
+          terms: values.terms,
+          upcCodes: upcCodes,
+          products: selectedProducts,
+        },
       }
 
-      // Add wallet info to form data
-      formData.append("walletAddress", currentWallet.publicAddress)
-      formData.append("walletType", currentWallet.type)
+      // Save program
+      const result = await saveProgram(program)
 
-      // Add required fields
-      const upcCodes = selectedProducts.map((p) => p.upc).join(",")
-      formData.append("upcCodes", upcCodes)
-      formData.append("expirationDate", date.toISOString())
+      if (result) {
+        // Manually trigger a programsUpdated event to refresh the dashboard
+        window.dispatchEvent(new Event("programsUpdated"))
 
-      debug("CreateProgramForm: Submitting form with wallet", currentWallet.publicAddress)
-      const result = await createCouponBookProgram(formData)
-
-      if (!mountedRef.current) return
-
-      if (!result.success) {
-        debug("CreateProgramForm: Form submission failed", result.error)
-        throw new Error(result.error)
+        // Add a small delay to ensure storage is updated before redirecting
+        setTimeout(() => {
+          router.push("/merchant/dashboard")
+        }, 500)
+      } else {
+        setError("Failed to create program. Please try again.")
       }
-
-      debug("CreateProgramForm: Program created successfully", result.programId)
-      router.push("/merchant")
-      router.refresh()
     } catch (err) {
-      if (!mountedRef.current) return
-
-      debug("CreateProgramForm: Error submitting form", err)
-      setError(err instanceof Error ? err.message : "An error occurred")
+      console.error("Error creating program:", err)
+      setError(err instanceof Error ? err.message : "An unexpected error occurred")
     } finally {
-      if (mountedRef.current) {
-        setIsSubmitting(false)
-      }
+      setIsSubmitting(false)
     }
   }
 
-  useEffect(() => {
-    const checkWalletBeforeSubmission = async () => {
-      try {
-        // Pre-warm the wallet state
-        const currentWallet = walletState.getWalletData(true)
-        debug("CreateProgramForm: Pre-submission wallet check:", currentWallet?.publicAddress)
-      } catch (error) {
-        debug("CreateProgramForm: Pre-submission check failed:", error)
-      }
-    }
-
-    checkWalletBeforeSubmission()
-  }, [])
+  if (walletStatus === "checking") {
+    return <div className="text-center py-4">Checking wallet status...</div>
+  }
 
   return (
-    <form ref={formRef} action={onSubmit} className="space-y-6">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+    <Card>
+      <CardHeader>
+        <CardTitle>Program Details</CardTitle>
+        <CardDescription>Fill out the form below to create a new coupon book program.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Program Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Summer Discount Coupons" {...field} />
+                  </FormControl>
+                  <FormDescription>A short, descriptive name for your program.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-      <div className="space-y-2">
-        <Label htmlFor="name">Program Name</Label>
-        <Input id="name" name="name" required placeholder="Enter program name" />
-      </div>
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Get exclusive discounts on our products with our digital coupon book."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>Explain the benefits of your program to customers.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" name="description" required placeholder="Describe your program" />
-      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="discountAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Discount Amount</FormLabel>
+                    <FormControl>
+                      <Input placeholder="10" {...field} />
+                    </FormControl>
+                    <FormDescription>The discount amount (e.g., 10 for 10% or $10).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-      <div className="space-y-2">
-        <Label htmlFor="discountAmount">Initial Discount Amount</Label>
-        <Input
-          id="discountAmount"
-          name="discountAmount"
-          type="number"
-          min="0"
-          step="0.01"
-          required
-          placeholder="Set a base discount for all coupons in this book"
-        />
-      </div>
+              <FormField
+                control={form.control}
+                name="discountType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Discount Type</FormLabel>
+                    <FormControl>
+                      <select
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        {...field}
+                      >
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed Amount ($)</option>
+                      </select>
+                    </FormControl>
+                    <FormDescription>Whether the discount is a percentage or fixed amount.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="expirationDate">Program Expiration Date</Label>
-        <DatePicker date={date} setDate={handleDateChange} />
-      </div>
+            <FormField
+              control={form.control}
+              name="expirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormDescription>When this program will expire.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-      <div className="space-y-2">
-        <Label>Eligible Products</Label>
-        <UPCLookup onProductSelect={setSelectedProducts} selectedProducts={selectedProducts} />
-        <p className="text-sm text-muted-foreground">
-          Search for products by UPC or name to add them to your coupon program.
-        </p>
-      </div>
+            <FormField
+              control={form.control}
+              name="terms"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Terms & Conditions</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Enter any terms and conditions for using these coupons." {...field} />
+                  </FormControl>
+                  <FormDescription>Optional terms and conditions for your program.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-      <Button type="submit" className="w-full" disabled={isSubmitting || !wallet} data-testid="create-program-button">
-        {isSubmitting ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Creating Program...
-          </>
-        ) : (
-          "Create Program"
-        )}
-      </Button>
-    </form>
+            <div className="space-y-2">
+              <FormLabel>Products</FormLabel>
+              <UPCLookup selectedProducts={selectedProducts} onProductSelect={setSelectedProducts} />
+              <FormDescription>
+                Search and add products that this coupon applies to by UPC code or name.
+              </FormDescription>
+            </div>
+
+            <div className="flex justify-end space-x-4">
+              <Button type="button" variant="outline" onClick={() => router.push("/merchant/dashboard")}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting || walletStatus !== "valid" || selectedProducts.length === 0}
+              >
+                {isSubmitting ? "Creating..." : "Create Program"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,5 +1,4 @@
 import type React from "react"
-import { DebugWallet } from "@/components/debug-wallet"
 import { WalletProvider } from "@/contexts/wallet-context"
 import { getWalletData } from "@/lib/storage"
 import { initializeWalletState } from "@/lib/wallet-sync"
@@ -27,10 +26,7 @@ export default async function ProtectedLayout({
   return (
     <WalletProvider>
       <div className="min-h-screen">
-        <div className="container mx-auto p-4">
-          <DebugWallet />
-          {children}
-        </div>
+        <div className="container mx-auto p-4">{children}</div>
       </div>
     </WalletProvider>
   )

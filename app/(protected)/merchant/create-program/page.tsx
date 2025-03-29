@@ -8,7 +8,7 @@ const programTypes = [
   {
     name: "Coupon Book",
     icon: Coupon,
-    href: "/merchant/create-program/coupon-book", // Verified correct path
+    href: "/merchant/create-program/coupon-book", // This path is correct
     description: "Create a digital coupon book program for your customers.",
   },
   {
@@ -45,7 +45,7 @@ export default function CreateProgram() {
             </CardHeader>
             <CardContent>
               <CardDescription className="mb-4">{type.description}</CardDescription>
-              <Link href={type.href}>
+              <Link href={type.href} passHref>
                 <Button className="w-full">Select</Button>
               </Link>
             </CardContent>

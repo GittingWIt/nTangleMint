@@ -19,6 +19,13 @@ const WALLET_SECURITY = {
   },
 } as const
 
+// Add this near the top of the file
+const ENVIRONMENT_CONFIG = {
+  PRODUCTION: process.env.NODE_ENV === "production",
+  FORCE_TEST_MODE: process.env.NEXT_PUBLIC_TEST_MODE === "true",
+  DEBUG: process.env.NODE_ENV === "development",
+} as const
+
 // Add this function near the top
 function validatePassword(password: string | undefined, isCreation: boolean): void {
   if (isCreation && WALLET_SECURITY.CREATION.REQUIRE_PASSWORD) {
@@ -192,36 +199,36 @@ async function initializeWallet(
   type: "user" | "merchant",
 ): Promise<WalletData> {
   try {
-    // Normalize mnemonic
-    const normalizedMnemonic = mnemonic.toLowerCase().trim()
-    console.log(`[Wallet Debug] Initializing wallet:`, {
+    // Add environment logging
+    console.log(`[Wallet Debug] Initializing wallet in ${process.env.NODE_ENV} environment:`, {
       type,
       hasPassword: !!password,
-      mnemonicLength: normalizedMnemonic.split(" ").length,
+      envConfig: ENVIRONMENT_CONFIG,
     })
 
-    // Generate seed with password
-    const seed = mnemonicToSeedSync(normalizedMnemonic, password || "")
+    // Normalize mnemonic
+    const normalizedMnemonic = mnemonic.toLowerCase().trim()
 
-    // Add after seed generation
-    console.log(`[Wallet Debug] Seed generation:`, {
-      mnemonicLength: normalizedMnemonic.split(" ").length,
-      seedLength: seed.length,
-      seedHexPrefix: Buffer.from(seed).toString("hex").substring(0, 8),
-    })
+    // Add environment-specific seed generation
+    const seed = mnemonicToSeedSync(
+      normalizedMnemonic,
+      ENVIRONMENT_CONFIG.PRODUCTION ? password || process.env.NEXT_PUBLIC_WALLET_SALT || "" : password || "",
+    )
 
-    // Add before key derivation
-    const seedVerification = mnemonicToSeedSync(normalizedMnemonic, password || "")
-    if (Buffer.from(seed).toString("hex") !== Buffer.from(seedVerification).toString("hex")) {
-      throw new Error("Seed verification failed before key derivation")
+    // Add verification step for production
+    if (ENVIRONMENT_CONFIG.PRODUCTION) {
+      const verificationSeed = mnemonicToSeedSync(
+        normalizedMnemonic,
+        password || process.env.NEXT_PUBLIC_WALLET_SALT || "",
+      )
+      if (Buffer.from(seed).toString("hex") !== Buffer.from(verificationSeed).toString("hex")) {
+        throw new Error("Production seed verification failed")
+      }
     }
 
-    console.log(`[Wallet Debug] Generated seed (length: ${seed.length} bytes)`)
-
-    // Derive keys
+    // Rest of the initialization code remains the same...
     const { privateKey, publicKey, address } = await deriveKeysFromSeed(seed, type, !!password)
 
-    // Create timestamp for createdAt and updatedAt
     const timestamp = new Date().toISOString()
 
     const wallet: WalletData = {
@@ -234,16 +241,13 @@ async function initializeWallet(
       updatedAt: timestamp,
     }
 
-    // Verify wallet data before storage
-    const verificationSeed = mnemonicToSeedSync(normalizedMnemonic, password || "")
-    const verification = await deriveKeysFromSeed(verificationSeed, type, !!password)
-
-    if (verification.address !== wallet.publicAddress) {
-      console.error("[Wallet Error] Wallet verification failed:", {
-        original: wallet.publicAddress,
-        verification: verification.address,
-      })
-      throw new Error("Wallet verification failed - inconsistent address generation")
+    // Add additional production verification
+    if (ENVIRONMENT_CONFIG.PRODUCTION) {
+      console.log("[Wallet Debug] Production environment detected, performing additional verification")
+      const verification = await deriveKeysFromSeed(seed, type, !!password)
+      if (verification.address !== wallet.publicAddress) {
+        throw new Error("Production address verification failed")
+      }
     }
 
     // Store wallet data

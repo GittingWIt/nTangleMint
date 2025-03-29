@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,6 +48,26 @@ export default function MerchantDashboard() {
       return sum + rewardsRedeemed
     }, 0),
   }
+
+  // Update the useEffect in the MerchantDashboard component
+
+  // Add this effect to refresh programs when the component mounts or when programs are updated
+  useEffect(() => {
+    // Initial refresh
+    refresh()
+
+    // Listen for program updates
+    const handleProgramsUpdated = () => {
+      console.log("programsUpdated event detected in dashboard, refreshing programs")
+      refresh()
+    }
+
+    window.addEventListener("programsUpdated", handleProgramsUpdated)
+
+    return () => {
+      window.removeEventListener("programsUpdated", handleProgramsUpdated)
+    }
+  }, [refresh])
 
   if (error) {
     return (
@@ -121,7 +141,7 @@ export default function MerchantDashboard() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button onClick={() => router.push("/merchant/create-program/coupon-book")}>
+            <Button onClick={() => router.push("/merchant/create-program")}>
               <Plus className="mr-2 h-4 w-4" />
               Create Program
             </Button>
@@ -150,7 +170,7 @@ export default function MerchantDashboard() {
               <p className="mb-4 text-muted-foreground">
                 You haven&apos;t created any programs yet. Get started by creating your first loyalty program.
               </p>
-              <Button onClick={() => router.push("/merchant/create-program/coupon-book")}>
+              <Button onClick={() => router.push("/merchant/create-program")}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create Your First Program
               </Button>

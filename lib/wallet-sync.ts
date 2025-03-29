@@ -1,268 +1,324 @@
-// Enhanced wallet state synchronization with Fast Refresh support
-import { debug } from "./debug"
-import type { WalletData } from "@/types"
+"use client"
 
-// Singleton state container with Fast Refresh resilience
+// This file handles wallet synchronization and component tracking for the nTangleMint application
+import { useEffect, useState } from "react"
+import { debug } from "@/lib/debug"
+
+// Type definitions
+type Subscriber = (data: any) => void
+type Unsubscribe = () => void
+type WalletData = any // Replace with your actual wallet data type
+
+/**
+ * Track component mount for Fast Refresh detection
+ */
+export function trackComponentMount() {
+  debug("Component mounted - tracking for wallet sync")
+  return true
+}
+
+/**
+ * State container for wallet data with pub/sub functionality
+ */
 class WalletStateContainer {
-  private static instance: WalletStateContainer
-  private _walletData: WalletData | null = null
-  private _isInitialized = false
-  private _initPromise: Promise<void> | null = null
-  private _initResolve: (() => void) | null = null
-  private _subscribers: Set<(wallet: WalletData | null) => void> = new Set()
-  private _lastUpdateTimestamp = 0
-  private _pendingUpdates: Array<{ data: WalletData | null; timestamp: number }> = []
-  private _processingUpdates = false
-  private _mountCount = 0
-  private _refreshCount = 0
+  private subscribers: Subscriber[] = []
+  private currentState: WalletData = null
+  private initialized = false
 
-  private constructor() {
-    // Initialize the promise
-    this._initPromise = new Promise<void>((resolve) => {
-      this._initResolve = resolve
-    })
-
-    // Handle storage events
+  constructor() {
+    // Initialize state from storage on creation
     if (typeof window !== "undefined") {
-      window.addEventListener("storage", this._handleStorageEvent)
-      window.addEventListener("walletUpdated", this._handleWalletUpdated)
+      this.loadFromStorage()
+      this.initialized = true
+      debug("WalletStateContainer initialized with data:", this.currentState ? "Found wallet data" : "No wallet data")
     }
   }
 
-  public static getInstance(): WalletStateContainer {
-    if (!WalletStateContainer.instance) {
-      WalletStateContainer.instance = new WalletStateContainer()
-    }
-    return WalletStateContainer.instance
-  }
+  /**
+   * Subscribe to wallet state changes
+   * @param callback - Function to call when state changes
+   * @returns Unsubscribe function
+   */
+  subscribe(callback: Subscriber): Unsubscribe {
+    this.subscribers.push(callback)
 
-  // Track component mounting for Fast Refresh detection
-  public componentMounted(): void {
-    this._mountCount++
-    debug(`WalletSync: Component mounted (total: ${this._mountCount})`)
-
-    // If we have multiple mounts in quick succession, it might be a Fast Refresh
-    const now = Date.now()
-    if (this._lastUpdateTimestamp > 0 && now - this._lastUpdateTimestamp < 500) {
-      this._refreshCount++
-      debug(`WalletSync: Possible Fast Refresh detected (count: ${this._refreshCount})`)
-
-      // Force reinitialization after Fast Refresh
-      if (this._refreshCount > 1) {
-        this._reinitializeAfterRefresh()
-      }
-    }
-
-    this._lastUpdateTimestamp = now
-  }
-
-  // Reinitialize after Fast Refresh
-  private _reinitializeAfterRefresh(): void {
-    debug(`WalletSync: Reinitializing after Fast Refresh`)
-
-    // Create a new initialization promise
-    this._initPromise = new Promise<void>((resolve) => {
-      this._initResolve = resolve
-    })
-
-    // Immediately resolve if we already have wallet data
-    if (this._walletData) {
-      if (this._initResolve) {
-        this._initResolve()
-      }
-      this._isInitialized = true
-    }
-  }
-
-  // Wait for initialization to complete with timeout
-  public async waitForInit(timeoutMs = 2000): Promise<void> {
-    if (this._isInitialized) {
-      return Promise.resolve()
-    }
-
-    if (!this._initPromise) {
-      this._initPromise = Promise.resolve()
-      return this._initPromise
-    }
-
-    // Add timeout to prevent infinite waiting
-    const timeoutPromise = new Promise<void>((_, reject) => {
-      setTimeout(() => {
-        debug(`WalletSync: Initialization timeout after ${timeoutMs}ms`)
-        reject(new Error(`Wallet initialization timeout after ${timeoutMs}ms`))
-      }, timeoutMs)
-    })
-
-    return Promise.race([this._initPromise, timeoutPromise])
-  }
-
-  // Handle storage events
-  private _handleStorageEvent = (event: StorageEvent): void => {
-    if (event.key === "walletData") {
-      debug(`WalletSync: Storage event for walletData`)
-      try {
-        const data = event.newValue ? (JSON.parse(event.newValue) as WalletData) : null
-        this._queueUpdate(data)
-      } catch (error) {
-        console.error("Error parsing wallet data from storage event:", error)
-      }
-    }
-  }
-
-  // Handle wallet updated events
-  private _handleWalletUpdated = (): void => {
-    debug(`WalletSync: walletUpdated event received`)
-    // We'll refresh the data from storage in the next tick
-    setTimeout(() => {
-      try {
-        const data = localStorage.getItem("walletData")
-        if (data) {
-          this._queueUpdate(JSON.parse(data))
-        } else {
-          this._queueUpdate(null)
-        }
-      } catch (error) {
-        console.error("Error handling walletUpdated event:", error)
-      }
-    }, 0)
-  }
-
-  // Queue an update to prevent race conditions
-  private _queueUpdate(data: WalletData | null): void {
-    this._pendingUpdates.push({
-      data,
-      timestamp: Date.now(),
-    })
-
-    if (!this._processingUpdates) {
-      this._processUpdates()
-    }
-  }
-
-  // Process queued updates in order
-  private async _processUpdates(): Promise<void> {
-    if (this._pendingUpdates.length === 0) {
-      this._processingUpdates = false
-      return
-    }
-
-    this._processingUpdates = true
-
-    // Sort updates by timestamp
-    this._pendingUpdates.sort((a, b) => a.timestamp - b.timestamp)
-
-    // Process each update
-    while (this._pendingUpdates.length > 0) {
-      const update = this._pendingUpdates.shift()
-      if (update) {
-        await this._applyUpdate(update.data)
-      }
-    }
-
-    this._processingUpdates = false
-  }
-
-  // Apply a single update
-  private async _applyUpdate(data: WalletData | null): Promise<void> {
-    // Skip if data hasn't changed
-    if (
-      this._walletData === data ||
-      (this._walletData && data && this._walletData.publicAddress === data.publicAddress)
-    ) {
-      return
-    }
-
-    this._walletData = data
-    this._lastUpdateTimestamp = Date.now()
-
-    // Mark as initialized if not already
-    if (!this._isInitialized && this._initResolve) {
-      this._isInitialized = true
-      this._initResolve()
-    }
-
-    // Notify subscribers
-    this._notifySubscribers()
-  }
-
-  // Notify all subscribers
-  private _notifySubscribers(): void {
-    debug(`WalletSync: Notifying ${this._subscribers.size} subscribers`)
-    this._subscribers.forEach((callback) => {
-      try {
-        callback(this._walletData)
-      } catch (error) {
-        console.error("Error in wallet subscriber:", error)
-      }
-    })
-  }
-
-  // Set wallet data and notify subscribers
-  public setWalletData(data: WalletData | null): void {
-    this._queueUpdate(data)
-  }
-
-  // Get current wallet data with optional refresh
-  public getWalletData(refresh = false): WalletData | null {
-    if (refresh && typeof localStorage !== "undefined") {
-      try {
-        const data = localStorage.getItem("walletData")
-        if (data) {
-          const parsedData = JSON.parse(data) as WalletData
-          if (parsedData && (!this._walletData || parsedData.publicAddress !== this._walletData.publicAddress)) {
-            this._queueUpdate(parsedData)
-          }
-        }
-      } catch (error) {
-        console.error("Error refreshing wallet data:", error)
-      }
-    }
-    return this._walletData
-  }
-
-  // Check if initialized
-  public isInitialized(): boolean {
-    return this._isInitialized
-  }
-
-  // Subscribe to wallet changes
-  public subscribe(callback: (wallet: WalletData | null) => void): () => void {
-    this._subscribers.add(callback)
-
-    // Immediately call with current data if initialized
-    if (this._isInitialized && this._walletData !== undefined) {
-      try {
-        callback(this._walletData)
-      } catch (error) {
-        console.error("Error in immediate wallet subscriber callback:", error)
-      }
+    // If we already have state, immediately notify the new subscriber
+    if (this.currentState) {
+      callback(this.currentState)
     }
 
     // Return unsubscribe function
     return () => {
-      this._subscribers.delete(callback)
+      this.subscribers = this.subscribers.filter((sub) => sub !== callback)
     }
   }
 
-  // Clean up resources
-  public cleanup(): void {
-    if (typeof window !== "undefined") {
-      window.removeEventListener("storage", this._handleStorageEvent)
-      window.removeEventListener("walletUpdated", this._handleWalletUpdated)
+  /**
+   * Update the wallet state and notify subscribers
+   * @param newState - New wallet state
+   */
+  update(newState: WalletData) {
+    this.currentState = newState
+
+    // Notify all subscribers
+    this.subscribers.forEach((callback) => {
+      callback(newState)
+    })
+
+    // Sync to local storage
+    this.syncToStorage(newState)
+  }
+
+  /**
+   * Sync wallet data to local storage
+   * @param walletData - Wallet data to sync
+   */
+  private syncToStorage(walletData: WalletData) {
+    if (typeof window === "undefined") return
+
+    const storagePrefix = process.env.NEXT_PUBLIC_STORAGE_PREFIX || "ntanglemint_"
+    const shouldResetStorage = process.env.NEXT_PUBLIC_RESET_STORAGE === "true"
+
+    // Check if we should reset storage before syncing
+    if (shouldResetStorage) {
+      debug("RESET_STORAGE is true, clearing existing wallet data")
+      localStorage.removeItem(`${storagePrefix}wallet`)
     }
-    this._subscribers.clear()
+
+    // Store the wallet data
+    if (walletData) {
+      localStorage.setItem(`${storagePrefix}wallet`, JSON.stringify(walletData))
+      debug("Wallet data synchronized to local storage")
+    }
+  }
+
+  /**
+   * Load wallet data from local storage
+   */
+  loadFromStorage() {
+    if (typeof window === "undefined") return null
+
+    const storagePrefix = process.env.NEXT_PUBLIC_STORAGE_PREFIX || "ntanglemint_"
+    const walletKey = `${storagePrefix}wallet`
+
+    // Try the new format first
+    let walletData = localStorage.getItem(walletKey)
+
+    // If not found, try the old format (without underscore)
+    if (!walletData) {
+      walletData = localStorage.getItem(`${storagePrefix.replace(/_$/, "")}wallet`)
+      debug("Trying legacy wallet key format")
+    }
+
+    // Also try the default key as a fallback
+    if (!walletData && storagePrefix !== "ntanglemint_") {
+      walletData = localStorage.getItem("ntanglemint_wallet")
+      debug("Trying default wallet key as fallback")
+    }
+
+    if (walletData) {
+      try {
+        const parsedData = JSON.parse(walletData)
+        this.currentState = parsedData
+        debug("Loaded wallet data from storage:", {
+          type: parsedData.type,
+          address: parsedData.publicAddress?.substring(0, 8) + "...",
+        })
+        return parsedData
+      } catch (error) {
+        console.error("Error parsing wallet data from storage:", error)
+      }
+    } else {
+      debug("No wallet data found in storage")
+    }
+
+    return null
+  }
+
+  /**
+   * Clear all wallet data
+   */
+  clear() {
+    if (typeof window === "undefined") return
+
+    const storagePrefix = process.env.NEXT_PUBLIC_STORAGE_PREFIX || "ntanglemint_"
+    localStorage.removeItem(`${storagePrefix}wallet`)
+    this.currentState = null
+
+    // Notify subscribers that data was cleared
+    this.subscribers.forEach((callback) => {
+      callback(null)
+    })
+
+    debug("Wallet data cleared from local storage")
+  }
+
+  /**
+   * Get wallet data from storage
+   * @param includePrivate - Whether to include private key in the returned data
+   * @returns The wallet data
+   */
+  getWalletData(includePrivate = false) {
+    // If not initialized yet, load from storage
+    if (!this.initialized && typeof window !== "undefined") {
+      this.loadFromStorage()
+      this.initialized = true
+    }
+
+    // If we still don't have data, return null
+    if (!this.currentState) {
+      return null
+    }
+
+    // If includePrivate is false, strip out private key for security
+    if (!includePrivate && this.currentState && this.currentState.privateKey) {
+      const { privateKey, ...publicData } = this.currentState
+      return publicData
+    }
+
+    return this.currentState
+  }
+
+  /**
+   * Wait for wallet initialization with timeout
+   * @param timeout - Timeout in milliseconds
+   * @returns Promise that resolves when wallet is initialized or rejects on timeout
+   */
+  waitForInit(timeout = 2000) {
+    return new Promise((resolve, reject) => {
+      // If we already have state, resolve immediately
+      if (this.currentState) {
+        resolve(this.currentState)
+        return
+      }
+
+      // Set up a timeout
+      const timeoutId = setTimeout(() => {
+        reject(new Error("Wallet initialization timeout"))
+      }, timeout)
+
+      // Set up a subscription that will resolve when state is available
+      const unsubscribe = this.subscribe((state) => {
+        if (state) {
+          clearTimeout(timeoutId)
+          unsubscribe()
+          resolve(state)
+        }
+      })
+    })
   }
 }
 
-// Export singleton instance
-export const walletState = WalletStateContainer.getInstance()
+// Create and export a singleton instance of the wallet state
+export const walletState = new WalletStateContainer()
 
-// Helper function to initialize wallet state
-export async function initializeWalletState(data: WalletData | null): Promise<void> {
-  walletState.setWalletData(data)
+/**
+ * Hook to use wallet state in components
+ */
+export function useWalletState() {
+  const [state, setState] = useState(walletState.getWalletData())
+
+  useEffect(() => {
+    // Subscribe to wallet state changes
+    const unsubscribe = walletState.subscribe((newState) => {
+      setState(newState)
+    })
+
+    // Cleanup subscription on unmount
+    return unsubscribe
+  }, [])
+
+  return {
+    walletData: state,
+    updateWallet: (newData: WalletData) => walletState.update(newData),
+    clearWallet: () => walletState.clear(),
+  }
 }
 
-// Helper to track component mounting for Fast Refresh detection
-export function trackComponentMount(): void {
-  walletState.componentMounted()
+// Legacy functions for backward compatibility
+export function syncWalletData(walletData: WalletData) {
+  walletState.update(walletData)
+}
+
+export function getWalletData() {
+  return walletState.getWalletData()
+}
+
+export function clearWalletData() {
+  walletState.clear()
+}
+
+/**
+ * Export wallet data to a file
+ * @returns The wallet data as a JSON string
+ */
+export function exportWallet() {
+  const walletData = walletState.getWalletData(true)
+  if (!walletData) {
+    console.error("No wallet data to export")
+    return null
+  }
+
+  // Create a JSON string of the wallet data
+  const walletJson = JSON.stringify(walletData, null, 2)
+
+  // Create a blob and download link
+  const blob = new Blob([walletJson], { type: "application/json" })
+  const url = URL.createObjectURL(blob)
+
+  // Create and trigger download
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `ntanglemint-wallet-${Date.now()}.json`
+  document.body.appendChild(a)
+  a.click()
+
+  // Cleanup
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+
+  return walletJson
+}
+
+/**
+ * Import wallet data from a JSON string
+ * @param walletJson - JSON string containing wallet data
+ * @returns The imported wallet data
+ */
+export function importWallet(walletJson: string) {
+  try {
+    const walletData = JSON.parse(walletJson)
+    walletState.update(walletData)
+    debug("Wallet data imported successfully")
+    return walletData
+  } catch (error) {
+    console.error("Error importing wallet data:", error)
+    return null
+  }
+}
+
+/**
+ * Create a consistent wallet with default values
+ * @returns The newly created wallet data
+ */
+export function createConsistentWallet() {
+  const defaultMerchant = process.env.NEXT_PUBLIC_DEFAULT_MERCHANT || "ntanglemint_merchant"
+  const networkMode = process.env.NEXT_PUBLIC_NETWORK_MODE || "mainnet"
+
+  // Create a new wallet with consistent default values
+  const newWallet = {
+    id: `${defaultMerchant}_${Date.now()}`,
+    type: "merchant",
+    network: networkMode,
+    createdAt: new Date().toISOString(),
+    programs: [],
+    balance: 0,
+    // Add any other required wallet properties
+  }
+
+  // Update the wallet state
+  walletState.update(newWallet)
+  debug("Created new consistent wallet")
+
+  return newWallet
 }
