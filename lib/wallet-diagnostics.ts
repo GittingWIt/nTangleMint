@@ -127,13 +127,19 @@ export function compareDiagnostics(local: DiagnosticResult, production: Diagnost
   console.log("\nConfiguration Differences:")
   const configDiffs = []
 
+  // Use type assertion to access config properties with string keys
   for (const key in local.config) {
-    if (local.config[key] !== production.config[key]) {
-      configDiffs.push({
-        key,
-        local: local.config[key],
-        production: production.config[key],
-      })
+    if (key in local.config && key in production.config) {
+      const localValue = local.config[key as keyof typeof local.config]
+      const productionValue = production.config[key as keyof typeof production.config]
+
+      if (localValue !== productionValue) {
+        configDiffs.push({
+          key,
+          local: localValue,
+          production: productionValue,
+        })
+      }
     }
   }
 

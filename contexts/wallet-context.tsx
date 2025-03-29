@@ -66,7 +66,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Update the shared wallet state
-      walletState.setWalletData(data)
+      walletState.update(data)
 
       if (!mountedRef.current) return
 
@@ -82,7 +82,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       debug("WalletContext: Error refreshing wallet", err)
       setError(err instanceof Error ? err.message : "Failed to load wallet data")
-      walletState.setWalletData(null)
+      walletState.update(null)
     } finally {
       if (mountedRef.current) {
         setIsLoading(false)
@@ -97,13 +97,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const initializeWallet = async () => {
       try {
         // First check if wallet state is already initialized
-        if (walletState.isInitialized()) {
-          const stateWallet = walletState.getWalletData()
-          if (stateWallet) {
-            setWallet(stateWallet)
-            setIsLoading(false)
-            return
-          }
+        const stateWallet = walletState.getWalletData()
+        if (stateWallet) {
+          setWallet(stateWallet)
+          setIsLoading(false)
+          return
         }
 
         // Otherwise refresh from storage

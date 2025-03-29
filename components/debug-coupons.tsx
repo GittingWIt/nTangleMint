@@ -55,9 +55,9 @@ export function DebugCoupons() {
           }),
         )
       })
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error checking storage:", error)
-      setError(`Error: ${error.message}`)
+      setError(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
 
       // Add manual coupon as fallback
       const manualCoupon = createManualCoupon()

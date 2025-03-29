@@ -6,6 +6,39 @@
 let navigationInProgress = false
 
 /**
+ * Initialize navigation optimizations
+ */
+export function initNavigationOptimizations() {
+  if (typeof window === "undefined") return
+
+  // Preload critical pages
+  const criticalPages = ["/user", "/about", "/"]
+
+  // Use requestIdleCallback for non-blocking preloading
+  if ("requestIdleCallback" in window) {
+    ;(window as any).requestIdleCallback(() => {
+      criticalPages.forEach((page) => preloadPage(page))
+    })
+  } else {
+    // Fallback for browsers without requestIdleCallback
+    setTimeout(() => {
+      criticalPages.forEach((page) => preloadPage(page))
+    }, 1000)
+  }
+
+  // Optimize navigation
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      // Reset any flags when page becomes visible
+      navigationInProgress = false
+      ;(window as any)._navigationInProgress = false
+    }
+  })
+
+  console.log("Navigation optimizations initialized")
+}
+
+/**
  * Navigate to a URL with optimized performance
  * @param url The URL to navigate to
  * @param options Optional navigation options
@@ -45,4 +78,30 @@ export function safeNavigate(url: string, options?: { replace?: boolean; timeout
     navigationInProgress = false
     ;(window as any)._navigationInProgress = false
   }, 3000) // Reduced from 5000ms to 3000ms
+}
+
+/**
+ * Preload a page to improve navigation performance
+ * @param url The URL to preload
+ */
+export function preloadPage(url: string) {
+  // Skip if already preloaded or empty URL
+  if (!url) return
+
+  // Cache for preloaded pages to avoid duplicates
+  const preloadedPages = ((window as any)._preloadedPages = (window as any)._preloadedPages || new Set<string>())
+
+  // Skip if already preloaded
+  if (preloadedPages.has(url)) return
+
+  try {
+    const link = document.createElement("link")
+    link.rel = "prefetch"
+    link.href = url
+    document.head.appendChild(link)
+    preloadedPages.add(url)
+    console.log(`Preloaded page: ${url}`)
+  } catch (error) {
+    console.error("Error preloading page:", error)
+  }
 }

@@ -44,9 +44,10 @@ export function MerchantProgramCard({ program }: MerchantProgramCardProps) {
   }
 
   // Get discount information
-  const getDiscountInfo = () => {
-    if (program.discount) {
-      return program.discount
+  const getDiscountInfo = (): string => {
+    // Check if discount exists as a property on program (type-safe check)
+    if ("discount" in program && program.discount) {
+      return String(program.discount)
     }
 
     // Try to get from metadata
@@ -61,9 +62,9 @@ export function MerchantProgramCard({ program }: MerchantProgramCardProps) {
   }
 
   // Get product ID or UPC codes
-  const getProductInfo = () => {
-    if (program.productId) {
-      return program.productId
+  const getProductInfo = (): string => {
+    if ("productId" in program && program.productId) {
+      return String(program.productId)
     }
 
     if (program.metadata?.upcCodes && program.metadata.upcCodes.length > 0) {
@@ -74,7 +75,7 @@ export function MerchantProgramCard({ program }: MerchantProgramCardProps) {
   }
 
   // Get participant count
-  const getParticipantCount = () => {
+  const getParticipantCount = (): number => {
     if (typeof program.participants === "number") {
       return program.participants
     }
@@ -86,13 +87,29 @@ export function MerchantProgramCard({ program }: MerchantProgramCardProps) {
     return 0
   }
 
+  // Get expiration date safely
+  const getExpirationDate = (): string => {
+    // Check if expirationDate exists as a property on program
+    if ("expirationDate" in program && program.expirationDate) {
+      // Use type assertion to tell TypeScript this is a valid Date or string
+      return formatDate(program.expirationDate as string | Date)
+    }
+
+    // Try to get from metadata
+    if (program.metadata?.expirationDate) {
+      return formatDate(program.metadata.expirationDate as string | Date)
+    }
+
+    return "No expiration"
+  }
+
   return (
     <Card className="overflow-hidden h-full flex flex-col">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <CardTitle className="text-lg">{program.name}</CardTitle>
-          <Badge className={getStatusColor(program.status)}>
-            {program.status.charAt(0).toUpperCase() + program.status.slice(1)}
+          <Badge className={getStatusColor(program.status || "active")}>
+            {(program.status || "active").charAt(0).toUpperCase() + (program.status || "active").slice(1)}
           </Badge>
         </div>
         <CardDescription className="line-clamp-2">{program.description}</CardDescription>
@@ -105,14 +122,7 @@ export function MerchantProgramCard({ program }: MerchantProgramCardProps) {
           </div>
           <div className="flex items-center text-muted-foreground">
             <CalendarIcon className="mr-2 h-4 w-4" />
-            <span>
-              Expires:{" "}
-              {program.expirationDate
-                ? formatDate(program.expirationDate)
-                : program.metadata?.expirationDate
-                  ? formatDate(program.metadata.expirationDate)
-                  : "No expiration"}
-            </span>
+            <span>Expires: {getExpirationDate()}</span>
           </div>
           <div className="flex items-center text-muted-foreground">
             <Users className="mr-2 h-4 w-4" />

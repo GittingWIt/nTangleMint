@@ -44,7 +44,6 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
   const { walletData } = useWalletData()
   const [coupons, setCoupons] = useState<ClippedCoupon[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshKey, setRefreshKey] = useState(0) // Used to force re-render
 
   // Use refs to track mounted state and prevent memory leaks
   const isMounted = useRef(true)
@@ -64,7 +63,7 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
         const userProgramsKey = `user-programs-${walletData.publicAddress}`
 
         // Load both in parallel
-        const [couponsStr, programsStr] = await Promise.all([
+        const [couponsStr] = await Promise.all([
           Promise.resolve(localStorage.getItem(userCouponsKey) || "[]"),
           Promise.resolve(localStorage.getItem(userProgramsKey) || "[]"),
         ])
@@ -123,7 +122,6 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
             refreshTimeoutRef.current = window.setTimeout(() => {
               if (isMounted.current) {
                 loadUserData()
-                setRefreshKey((prev) => prev + 1)
               }
               refreshTimeoutRef.current = undefined
             }, 300)
@@ -144,7 +142,6 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
             refreshTimeoutRef.current = window.setTimeout(() => {
               if (isMounted.current) {
                 loadUserData()
-                setRefreshKey((prev) => prev + 1)
               }
               refreshTimeoutRef.current = undefined
             }, 300)
@@ -168,7 +165,6 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
             refreshTimeoutRef.current = window.setTimeout(() => {
               if (isMounted.current) {
                 loadUserData()
-                setRefreshKey((prev) => prev + 1)
               }
               refreshTimeoutRef.current = undefined
             }, 300)
@@ -242,7 +238,6 @@ export function DashboardContent({ programs, isLoading, error }: DashboardConten
         <Button
           onClick={() => {
             loadUserData()
-            setRefreshKey((prev) => prev + 1)
           }}
         >
           Refresh Data

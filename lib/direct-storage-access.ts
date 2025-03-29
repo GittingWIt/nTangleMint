@@ -186,7 +186,7 @@ export function getCouponPrograms(): Program[] {
 }
 
 // Function to create a manual coupon based on the data we can see in storage
-function createManualCoupon(): Program {
+export function createManualCoupon(): Program {
   return {
     id: "m8qnmqxexfyjygzdv",
     type: "coupon-book",

@@ -11,6 +11,36 @@ declare global {
   }
 }
 
+// Define a type for wallet data to help TypeScript understand the structure
+interface WalletData {
+  publicAddress?: string
+  type?: string
+  [key: string]: any // Allow for other properties
+}
+
+// Define a type for coupon program
+interface CouponProgram {
+  id: string
+  name?: string
+  description?: string
+  metadata?: {
+    expirationDate?: string | Date
+    discountAmount?: string | number
+    discountType?: string
+    [key: string]: any
+  }
+  [key: string]: any // Allow for other properties that might exist
+}
+
+// Define a custom event type for coupon clipped events
+interface CouponClippedEvent extends CustomEvent {
+  detail: {
+    couponId: string
+    userId: string
+    merchantAddress: string
+  }
+}
+
 export function CouponHandler() {
   // Use a ref to track if the component is mounted
   const isMounted = useRef(true)
@@ -20,8 +50,10 @@ export function CouponHandler() {
     isMounted.current = true
 
     // Create a more efficient event handler
-    const handleCouponClipped = async (event: CustomEvent) => {
-      const { couponId, userId, merchantAddress } = event.detail
+    const handleCouponClipped = async (event: Event) => {
+      // Cast the event to our custom event type
+      const customEvent = event as CouponClippedEvent
+      const { couponId, userId, merchantAddress } = customEvent.detail
       debug("Coupon clipped event received:", { couponId, userId, merchantAddress })
 
       // Add debouncing to prevent multiple rapid executions
@@ -39,12 +71,13 @@ export function CouponHandler() {
           setTimeout(() => reject(new Error("Wallet data fetch timeout")), 1000),
         )
 
-        const walletData = await Promise.race([walletDataPromise, timeoutPromise]).catch((err) => {
+        const walletData = (await Promise.race([walletDataPromise, timeoutPromise]).catch((err) => {
           console.error("Error fetching wallet data:", err)
           return null
-        })
+        })) as WalletData | null
 
-        if (!walletData || !walletData.publicAddress) {
+        // Type-safe check for wallet data and publicAddress
+        if (!walletData || typeof walletData.publicAddress !== "string") {
           console.error("No wallet data found")
           window._processingCoupon = false
           return
@@ -59,12 +92,37 @@ export function CouponHandler() {
 
         // Get the coupon details from storage - with performance optimization
         const allPrograms = getDirectProgramsFromStorage()
-        const couponProgram = allPrograms.find((p: any) => p.id === couponId)
+        const couponProgram = allPrograms.find((p: any) => p.id === couponId) as CouponProgram | undefined
 
         if (!couponProgram) {
           console.error("Coupon not found in programs")
           window._processingCoupon = false
           return
+        }
+
+        // Get expiration date with type safety
+        const getExpirationDate = () => {
+          // Check if expirationDate exists on the program
+          if ("expirationDate" in couponProgram && couponProgram.expirationDate) {
+            return couponProgram.expirationDate
+          }
+
+          // Check if it exists in metadata
+          if (couponProgram.metadata?.expirationDate) {
+            return couponProgram.metadata.expirationDate
+          }
+
+          // Default: 30 days from now
+          return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        }
+
+        // Get discount info with type safety
+        const getDiscountInfo = () => {
+          if (couponProgram.metadata?.discountAmount) {
+            const discountType = couponProgram.metadata.discountType === "percentage" ? "%" : "$"
+            return `${couponProgram.metadata.discountAmount}${discountType} off`
+          }
+          return "Special offer"
         }
 
         // Create the user coupon object
@@ -74,13 +132,8 @@ export function CouponHandler() {
           description: couponProgram.description || "",
           merchantAddress: merchantAddress,
           clippedAt: new Date().toISOString(),
-          expirationDate:
-            couponProgram.expirationDate ||
-            couponProgram.metadata?.expirationDate ||
-            new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          discount: couponProgram.metadata?.discountAmount
-            ? `${couponProgram.metadata.discountAmount}${couponProgram.metadata.discountType === "percentage" ? "%" : "$"} off`
-            : "Special offer",
+          expirationDate: getExpirationDate(),
+          discount: getDiscountInfo(),
           status: "active",
           type: "coupon-book",
           metadata: couponProgram.metadata || {},
@@ -185,13 +238,13 @@ export function CouponHandler() {
       }
     }
 
-    // Add event listener
-    window.addEventListener("couponClipped", handleCouponClipped as EventListener)
+    // Add event listener - no type assertion needed now
+    window.addEventListener("couponClipped", handleCouponClipped)
 
     // Clean up
     return () => {
       isMounted.current = false
-      window.removeEventListener("couponClipped", handleCouponClipped as EventListener)
+      window.removeEventListener("couponClipped", handleCouponClipped)
       // Ensure we clear the processing flag on unmount
       window._processingCoupon = false
     }

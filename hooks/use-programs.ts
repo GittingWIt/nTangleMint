@@ -44,7 +44,7 @@ export function usePrograms({
 
       // Check for duplicates and log warning
       const programIds = new Set()
-      const duplicates = []
+      const duplicates: string[] = []
 
       filteredPrograms.forEach((program) => {
         if (programIds.has(program.id)) {
@@ -83,6 +83,11 @@ export function usePrograms({
     if (autoRefresh) {
       const intervalId = setInterval(fetchPrograms, refreshInterval)
       return () => clearInterval(intervalId)
+    }
+
+    // Add a return function for the non-autoRefresh case
+    return () => {
+      // No cleanup needed when autoRefresh is false
     }
   }, [fetchPrograms, autoRefresh, refreshInterval])
 

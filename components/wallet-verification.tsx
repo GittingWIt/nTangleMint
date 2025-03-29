@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-import { useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 import { walletState } from "@/lib/wallet-sync"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -13,7 +12,6 @@ import { fixWalletInitialization } from "@/lib/wallet-fix"
 interface WalletVerificationProps {
   children: React.ReactNode
   showStatus?: boolean
-  redirectPath?: string
   requiredType?: "merchant" | "user"
   onWalletConnected?: () => void
 }
@@ -21,11 +19,9 @@ interface WalletVerificationProps {
 export function WalletVerification({
   children,
   showStatus = true,
-  redirectPath,
   requiredType = "merchant",
   onWalletConnected,
 }: WalletVerificationProps) {
-  const router = useRouter()
   const [status, setStatus] = useState<"loading" | "verified" | "error" | "not-found">("loading")
   const [wallet, setWallet] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)

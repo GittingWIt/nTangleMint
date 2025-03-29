@@ -34,7 +34,6 @@ export const getUserCoupons = (userId: string) => {
 
 // Cache for frequently accessed data
 const storageCache: Record<string, any> = {}
-const cacheInitialized = false
 
 /**
  * Get data from storage with caching

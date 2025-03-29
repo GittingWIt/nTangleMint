@@ -25,6 +25,16 @@ interface Product {
   category: string
 }
 
+// Define the form values type to ensure type safety
+type FormValues = {
+  name: string
+  description: string
+  discountAmount: string
+  discountType: "percentage" | "fixed"
+  expirationDate: string
+  terms: string
+}
+
 // Form schema
 const formSchema = z.object({
   name: z.string().min(3, { message: "Program name must be at least 3 characters" }),
@@ -71,21 +81,31 @@ export function CreateProgramForm() {
     checkWallet()
   }, [])
 
-  // Initialize form
-  const form = useForm<z.infer<typeof formSchema>>({
+  // Get default expiration date (30 days from now) - simplified to avoid type errors
+  const getDefaultExpirationDate = (): string => {
+    const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+    // Format the date directly as YYYY-MM-DD
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }
+
+  // Initialize form with explicit type
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       description: "",
       discountAmount: "",
       discountType: "percentage",
-      expirationDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // Default to 30 days from now
+      expirationDate: getDefaultExpirationDate(),
       terms: "",
     },
   })
 
   // Handle form submission
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: FormValues) => {
     try {
       setIsSubmitting(true)
       setError(null)

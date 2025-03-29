@@ -1,6 +1,7 @@
 // Test utility functions for debugging and testing
 import { getWalletData, setWalletData, debugStorage } from "@/lib/storage"
 import { mockMerchantWallet } from "@/lib/mock/wallet-data"
+import type { WalletData } from "@/types"
 
 // Basic test for coupon book creation
 export function testCouponBookCreation() {
@@ -57,7 +58,7 @@ export async function testWalletStatePersistence() {
 
     if (!wallet) {
       console.log("Loading mock wallet for testing...")
-      await setWalletData(mockMerchantWallet)
+      await setWalletData(mockMerchantWallet as WalletData)
       wallet = await getWalletData()
       console.log("Wallet loaded:", wallet ? "Success" : "Failed")
     }
@@ -149,7 +150,7 @@ export async function testFormSubmission() {
 
     if (!wallet) {
       console.log("Loading mock wallet for testing...")
-      await setWalletData(mockMerchantWallet)
+      await setWalletData(mockMerchantWallet as WalletData)
       wallet = await getWalletData()
     }
 

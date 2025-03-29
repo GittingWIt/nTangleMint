@@ -18,6 +18,44 @@ export function trackComponentMount() {
 }
 
 /**
+ * Initialize wallet state on the server
+ * This function can be called from server components or layouts
+ * @param walletData - Optional wallet data to initialize with
+ */
+export async function initializeWalletState(walletData?: any) {
+  try {
+    // If wallet data is provided, use it to initialize
+    if (walletData) {
+      debug("Initializing wallet state with provided data")
+
+      // If we're on the client, update the wallet state
+      if (typeof window !== "undefined") {
+        walletState.update(walletData)
+      }
+
+      return walletData
+    }
+
+    // In server context, we need to get wallet data from a different source
+    // than localStorage since localStorage is not available on the server
+    if (typeof window === "undefined") {
+      debug("Initializing wallet state on server")
+      // For server components, we'll return null and let client components
+      // handle the actual wallet data loading
+      return null
+    }
+
+    // For client components, we can use the existing walletState
+    const data = walletState.getWalletData()
+    debug("Initialized wallet state:", data ? "Found wallet data" : "No wallet data")
+    return data
+  } catch (error) {
+    console.error("Error initializing wallet state:", error)
+    return null
+  }
+}
+
+/**
  * State container for wallet data with pub/sub functionality
  */
 class WalletStateContainer {
@@ -301,24 +339,25 @@ export function importWallet(walletJson: string) {
  * Create a consistent wallet with default values
  * @returns The newly created wallet data
  */
-export function createConsistentWallet() {
+export function createConsistentWallet(seed?: string) {
   const defaultMerchant = process.env.NEXT_PUBLIC_DEFAULT_MERCHANT || "ntanglemint_merchant"
   const networkMode = process.env.NEXT_PUBLIC_NETWORK_MODE || "mainnet"
 
   // Create a new wallet with consistent default values
   const newWallet = {
-    id: `${defaultMerchant}_${Date.now()}`,
+    id: seed ? `${defaultMerchant}_${seed}` : `${defaultMerchant}_${Date.now()}`,
     type: "merchant",
     network: networkMode,
     createdAt: new Date().toISOString(),
     programs: [],
     balance: 0,
+    seed: seed, // Store the seed if provided
     // Add any other required wallet properties
   }
 
   // Update the wallet state
   walletState.update(newWallet)
-  debug("Created new consistent wallet")
+  debug("Created new consistent wallet" + (seed ? " with seed" : ""))
 
   return newWallet
 }

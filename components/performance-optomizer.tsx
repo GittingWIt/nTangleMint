@@ -43,19 +43,26 @@ export function PerformanceOptimizer() {
 
     optimizeResourceLoading()
 
-    // Track and store interval IDs for cleanup
-    const originalSetInterval = window.setInterval
-    ;(window as any)._intervalIds = (window as any)._intervalIds || []
+    // Track and store interval IDs for cleanup - using a simpler approach
+    // that doesn't involve overriding window.setInterval
+    const intervalIds: number[] = []
 
-    window.setInterval = (handler: TimerHandler, timeout?: number, ...args: any[]) => {
-      const id = originalSetInterval(handler, timeout, ...args)
-      ;(window as any)._intervalIds.push(id)
+    // Create a tracking function instead of overriding setInterval
+    const trackInterval = (callback: Function, ms?: number, ...args: any[]) => {
+      const id = window.setInterval(() => {
+        callback(...args)
+      }, ms)
+      intervalIds.push(id)
       return id
     }
 
+    // Store the tracking function and interval IDs separately - fixed syntax
+    ;(window as any)._trackInterval = trackInterval
+    ;(window as any)._intervalIds = intervalIds
+
     return () => {
-      // Restore original setInterval
-      window.setInterval = originalSetInterval
+      // Clean up all intervals on unmount
+      intervalIds.forEach((id) => window.clearInterval(id))
     }
   }, [])
 

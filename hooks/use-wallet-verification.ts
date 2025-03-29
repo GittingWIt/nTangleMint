@@ -78,7 +78,7 @@ export function useWalletVerification(redirectPath = "/wallet") {
 
           // Update shared state if we found it
           if (wallet) {
-            walletState.setWalletData(wallet)
+            walletState.update(wallet)
           }
         }
 
