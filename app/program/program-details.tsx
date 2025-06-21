@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { getWalletData } from "@/lib/storage"
+import { getWalletData } from "@/lib/storage-compat"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import type { Program } from "@/types"
 import { PROGRAM_TYPES } from "@/lib/constants"
@@ -65,7 +65,7 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
         setProgram(foundProgram)
 
         // Check if user has already joined
-        if (data?.type === "user") {
+        if (data?.type === "customer") {
           const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${data.publicAddress}`) || "[]")
           setIsJoined(userPrograms.includes(programId))
         }
@@ -273,7 +273,7 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
               </div>
             </CardContent>
             <CardFooter>
-              {walletData?.type === "user" && (
+              {walletData?.type === "customer" && (
                 <Button className="w-full" disabled={isJoined || joinLoading} onClick={handleJoinProgram}>
                   {joinLoading ? "Joining..." : isJoined ? "Already Joined" : "Join Program"}
                   <Gift className="ml-2 h-4 w-4" />

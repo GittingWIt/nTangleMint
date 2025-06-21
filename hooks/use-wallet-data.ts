@@ -1,95 +1,41 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { getWalletData, setWalletData as setStorageWalletData } from "@/lib/storage"
-import { STORAGE_EVENTS } from "@/lib/constants"
-import type { WalletData } from "@/types"
+import { useState, useEffect } from "react"
+import { getWalletData } from "@/lib/storage-compat"
+import { debug } from "@/lib/utils"
 
-interface UseWalletDataOptions {
-  autoRefresh?: boolean
-  refreshInterval?: number
-}
-
-export function useWalletData(options: UseWalletDataOptions = {}) {
-  const { autoRefresh = false, refreshInterval = 10000 } = options
-  const [walletData, setWalletData] = useState<WalletData | null>(null)
+export function useWalletData() {
+  const [walletData, setWalletData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const loadWalletData = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      const data = await getWalletData()
-      if (data) {
-        console.log("[useWalletData] Loaded wallet data:", { ...data, mnemonic: "[REDACTED]" })
-        setWalletData(data)
-        setError(null)
-      } else {
-        console.log("[useWalletData] No wallet data found")
-        setWalletData(null)
-      }
-    } catch (err) {
-      console.error("[useWalletData] Failed to load wallet data:", err)
-      setError("Failed to load wallet data")
-      setWalletData(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  const updateWalletData = useCallback(async (newData: WalletData) => {
-    try {
-      await setStorageWalletData(newData)
-      setWalletData(newData)
-      console.log("[useWalletData] Wallet data updated:", { ...newData, mnemonic: "[REDACTED]" })
-    } catch (err) {
-      console.error("[useWalletData] Failed to update wallet data:", err)
-      setError("Failed to update wallet data")
-    }
-  }, [])
-
-  // Handle storage sync event
-  const handleStorageSync = useCallback((event: CustomEvent<{ wallet: WalletData | null }>) => {
-    if (event.detail.wallet) {
-      setWalletData(event.detail.wallet)
-    }
-  }, [])
+  const [error, setError] = useState<Error | null>(null)
 
   useEffect(() => {
-    loadWalletData()
+    async function loadWalletData() {
+      try {
+        setIsLoading(true)
+        debug("useWalletData: Loading wallet data...") // ADDED: Debug log
 
-    // Add event listeners
-    window.addEventListener("storage", (event) => {
-      if (event.key === "walletData") {
-        loadWalletData()
-      }
-    })
-    window.addEventListener(STORAGE_EVENTS.WALLET_UPDATED, loadWalletData)
-    window.addEventListener(STORAGE_EVENTS.STORAGE_SYNC, handleStorageSync as EventListener)
+        const data = await getWalletData()
+        setWalletData(data)
 
-    // Auto-refresh setup
-    let refreshTimer: NodeJS.Timeout | undefined
-    if (autoRefresh) {
-      refreshTimer = setInterval(loadWalletData, refreshInterval)
-    }
-
-    return () => {
-      window.removeEventListener("storage", (event) => {
-        if (event.key === "walletData") {
-          loadWalletData()
+        if (data) {
+          debug("useWalletData: Wallet data loaded successfully", data) // ADDED: Debug log
+        } else {
+          debug("useWalletData: No wallet data found") // ADDED: Debug log
         }
-      })
-      window.removeEventListener(STORAGE_EVENTS.WALLET_UPDATED, loadWalletData)
-      window.removeEventListener(STORAGE_EVENTS.STORAGE_SYNC, handleStorageSync as EventListener)
-      if (refreshTimer) clearInterval(refreshTimer)
+      } catch (err) {
+        console.error("Error loading wallet data:", err)
+        setError(err instanceof Error ? err : new Error(String(err)))
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }, [loadWalletData, handleStorageSync, autoRefresh, refreshInterval])
 
-  return {
-    walletData,
-    isLoading,
-    error,
-    updateWalletData,
-    refresh: loadWalletData,
-  }
+    loadWalletData()
+  }, [])
+
+  return { walletData, isLoading, error }
 }
+
+// Add an alias export for backward compatibility
+export const useWallet = useWalletData

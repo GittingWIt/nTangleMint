@@ -72,10 +72,15 @@ function getProgramIcon(type: ProgramType): string {
 // Temporary mock function until the actual utility is available
 function getMockWalletData(): WalletData {
   return {
-    type: "user",
+    type: "customer", // Changed from "user" to "customer" to match WalletData type
     publicAddress: "mock-address",
     // Add other required WalletData properties here
-  } as WalletData
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    mnemonic: "mock mnemonic phrase",
+    publicKey: "mock-public-key",
+    privateKey: "mock-private-key",
+  }
 }
 
 export default function DashboardContent() {
@@ -90,7 +95,8 @@ export default function DashboardContent() {
     const data = getMockWalletData()
     setWalletData(data)
 
-    if (!data || data.type !== "user") {
+    if (!data || data.type !== "customer") {
+      // Updated to check for "customer" instead of "user"
       router.push("/wallet-generation")
       return
     }

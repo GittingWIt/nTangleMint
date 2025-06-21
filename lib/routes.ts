@@ -1,7 +1,7 @@
 import type { WalletData } from "@/types"
 
 // Route configuration types
-export type RouteAccess = "public" | "user" | "merchant" | "authenticated"
+export type RouteAccess = "public" | "customer" | "merchant" | "authenticated"
 
 export interface Route {
   path: string
@@ -17,14 +17,14 @@ export const routes: Route[] = [
   { path: "/wallet-generation", access: "public" },
   { path: "/wallet-restoration", access: "public" },
 
-  // User routes
+  // Customer routes (previously "user")
   {
-    path: "/user",
-    access: "user",
+    path: "/customer",
+    access: "customer",
     children: [
-      { path: "/dashboard", access: "user" },
-      { path: "/programs", access: "user" },
-      { path: "/rewards", access: "user" },
+      { path: "/dashboard", access: "customer" },
+      { path: "/programs", access: "customer" },
+      { path: "/rewards", access: "customer" },
     ],
   },
 
@@ -84,8 +84,9 @@ export function canAccessRoute(path: string, walletData: WalletData | null): boo
       return true
     case "authenticated":
       return !!walletData
-    case "user":
-      return walletData?.type === "user"
+    case "customer":
+      // Cast to any to handle legacy "user" type that might exist at runtime
+      return walletData?.type === "customer" || (walletData?.type as any) === "user"
     case "merchant":
       return walletData?.type === "merchant"
     default:
@@ -95,7 +96,13 @@ export function canAccessRoute(path: string, walletData: WalletData | null): boo
 
 export function getDefaultRoute(walletData: WalletData | null): string {
   if (!walletData) return "/wallet-generation"
-  return `/${walletData.type}/dashboard`
+
+  // Handle legacy "user" type by mapping it to "customer"
+  // Use type assertion to handle the legacy "user" type
+  const type = (walletData.type as any) === "user" ? "customer" : walletData.type
+
+  // For unknown wallet types, default to customer dashboard
+  return `/${type}/dashboard`
 }
 
 export function getBasePath(path: string): string {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { initNavigationOptimizations, preloadPage } from "@/lib/navigation-utils"
+import { initNavigationOptimizations, preloadPage } from "@/lib/utils/navigation-utils"
 
 export function PerformanceOptimizer() {
   useEffect(() => {

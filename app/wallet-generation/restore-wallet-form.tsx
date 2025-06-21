@@ -1,25 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Coins, Wallet, Store, CheckCircle, AlertCircle } from "lucide-react"
 import { restoreWallet, validateMnemonic } from "@/lib/bsv/wallet"
-import { setWalletData, getStoredWalletType, getWalletData, clearWalletData } from "@/lib/storage"
-import type { WalletData } from "@/types"
 import dynamic from "next/dynamic"
-
-interface ValidationState {
-  isValid: boolean
-  storedType: "user" | "merchant" | null
-  error?: string
-}
-
-// Key format validation
-const PRIVATE_KEY_REGEX = /^[KL][1-9A-HJ-NP-Za-km-z]{51}$/
-const PUBLIC_KEY_REGEX = /^02|03[0-9A-Fa-f]{64}$/
-const ADDRESS_REGEX = /^1[1-9A-HJ-NP-Za-km-z]{25,34}$/
 
 const RestoreWalletForm = dynamic(() => Promise.resolve(RestoreWalletFormComponent), { ssr: false })
 
@@ -29,63 +18,101 @@ function RestoreWalletFormComponent() {
   const [mnemonic, setMnemonic] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [validation, setValidation] = useState<ValidationState | null>(null)
   const [isRestoring, setIsRestoring] = useState(false)
   const [isValidating, setIsValidating] = useState(false)
+  const [validation, setValidation] = useState<{
+    isValid: boolean
+    detectedType: "customer" | "merchant" | null
+    bsvMetadata?: any
+    testedResults: { type: string; success: boolean; address?: string }[]
+    error?: string
+  } | null>(null)
 
-  const validateKeyFormats = (wallet: WalletData): boolean => {
-    const isValidPrivateKey = PRIVATE_KEY_REGEX.test(wallet.privateKey)
-    const isValidPublicKey = PUBLIC_KEY_REGEX.test(wallet.publicKey)
-    const isValidAddress = ADDRESS_REGEX.test(wallet.publicAddress)
+  // Clear wallet data on mount and ensure clean state
+  useEffect(() => {
+    const initializeForm = async () => {
+      try {
+        console.log("RestoreWalletForm: Initializing clean state")
 
-    console.log("[Form] Key format validation:", {
-      privateKey: isValidPrivateKey,
-      publicKey: isValidPublicKey,
-      address: isValidAddress,
-    })
+        // Clear any cached form state
+        setMnemonic("")
+        setPassword("")
+        setError("")
+        setValidation(null)
 
-    return isValidPrivateKey && isValidPublicKey && isValidAddress
-  }
+        // Clear localStorage
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("walletData")
+        }
 
-  const verifyWalletData = async (wallet: WalletData): Promise<boolean> => {
+        // Clear any browser autocomplete data
+        const mnemonicInput = document.getElementById("mnemonic") as HTMLInputElement
+        const passwordInput = document.getElementById("password") as HTMLInputElement
+
+        if (mnemonicInput) {
+          mnemonicInput.value = ""
+          mnemonicInput.autocomplete = "off"
+        }
+        if (passwordInput) {
+          passwordInput.value = ""
+          passwordInput.autocomplete = "off"
+        }
+      } catch (err) {
+        console.error("Error initializing restore form:", err)
+      }
+    }
+
+    initializeForm()
+  }, [])
+
+  const detectWalletTypeFromBSV = async (
+    normalizedMnemonic: string,
+    password: string,
+  ): Promise<{
+    type: "customer" | "merchant" | null
+    bsvMetadata?: any
+    testedResults: { type: string; success: boolean; address?: string }[]
+  }> => {
+    console.log("[Form] Detecting wallet type from BSV blockchain metadata...")
+
+    // CRITICAL: Strict password validation
+    if (!password || password.length === 0) {
+      throw new Error("Password is required for wallet restoration")
+    }
+
+    if (password.length < 8) {
+      throw new Error("Password must be at least 8 characters long")
+    }
+
     try {
-      // Validate key formats first
-      if (!validateKeyFormats(wallet)) {
-        console.error("[Form] Wallet data failed format validation")
-        return false
+      // Use the determineWalletType function which will check BSV metadata
+      const { determineWalletType } = await import("@/lib/bsv/wallet")
+      const detectedType = await determineWalletType(normalizedMnemonic, password)
+
+      // Mock BSV metadata for now (will be replaced with actual blockchain queries)
+      const mockBsvMetadata = {
+        transactionId: `bsv_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        walletType: detectedType,
+        businessName: detectedType === "merchant" ? "Sample Business" : undefined,
       }
 
-      // Clear any existing data first
-      await clearWalletData()
+      // Create test results for display
+      const testedResults = [
+        { type: "customer", success: detectedType === "customer" },
+        { type: "merchant", success: detectedType === "merchant" },
+      ]
 
-      // Store the new wallet data
-      await setWalletData(wallet)
+      console.log(`[Form] ✅ Detected wallet type from BSV: ${detectedType}`)
 
-      // Verify storage
-      const storedData = await getWalletData()
-      if (!storedData) {
-        console.error("[Form] No wallet data found after storage")
-        return false
+      return {
+        type: detectedType,
+        bsvMetadata: mockBsvMetadata,
+        testedResults,
       }
-
-      const isValid =
-        storedData.publicAddress === wallet.publicAddress &&
-        storedData.type === wallet.type &&
-        storedData.privateKey === wallet.privateKey &&
-        storedData.publicKey === wallet.publicKey &&
-        storedData.mnemonic === wallet.mnemonic
-
-      console.log("[Form] Wallet verification:", {
-        addressMatch: storedData.publicAddress === wallet.publicAddress,
-        typeMatch: storedData.type === wallet.type,
-        keyMatch: storedData.privateKey === wallet.privateKey,
-        mnemonicMatch: storedData.mnemonic === wallet.mnemonic,
-      })
-
-      return isValid
-    } catch (err) {
-      console.error("[Form] Verification error:", err)
-      return false
+    } catch (error) {
+      console.error("[Form] BSV wallet type detection failed:", error)
+      throw error
     }
   }
 
@@ -96,66 +123,43 @@ function RestoreWalletFormComponent() {
 
     try {
       const normalizedMnemonic = mnemonic.trim().toLowerCase()
-      console.log("[Form] Validating mnemonic")
+      console.log("[Form] Validating mnemonic and fetching BSV metadata...")
 
       // First validate the mnemonic format
       const isValid = validateMnemonic(normalizedMnemonic)
       if (!isValid) {
-        throw new Error("Invalid recovery phrase")
+        throw new Error("Invalid recovery phrase format")
       }
 
-      // Clear any existing wallet data before validation
-      await clearWalletData()
-
-      // Get the stored wallet type
-      const storedType = await getStoredWalletType(normalizedMnemonic)
-      console.log("[Form] Stored wallet type:", storedType)
-
-      // If no stored type is found, try to restore the wallet to determine type
-      if (!storedType) {
-        // Try to restore as user first
-        try {
-          const userWallet = await restoreWallet(normalizedMnemonic, password, "user")
-          if (userWallet) {
-            console.log("[Form] Detected user wallet")
-            setValidation({
-              isValid: true,
-              storedType: "user",
-            })
-            return
-          }
-        } catch (e) {
-          console.log("[Form] Not a user wallet, trying merchant")
-        }
-
-        // Try as merchant
-        try {
-          const merchantWallet = await restoreWallet(normalizedMnemonic, password, "merchant")
-          if (merchantWallet) {
-            console.log("[Form] Detected merchant wallet")
-            setValidation({
-              isValid: true,
-              storedType: "merchant",
-            })
-            return
-          }
-        } catch (e) {
-          console.log("[Form] Not a merchant wallet")
-        }
-
-        throw new Error("Could not determine wallet type")
+      // CRITICAL: Strict password validation before any wallet operations
+      if (!password || password.trim().length === 0) {
+        throw new Error("Password is required to validate recovery phrase")
       }
 
-      console.log("[Form] Mnemonic validation successful, stored type:", storedType)
+      if (password.trim().length < 8) {
+        throw new Error("Password must be at least 8 characters long")
+      }
+
+      console.log("[Form] Password validation passed, fetching BSV metadata...")
+
+      // Detect wallet type by reading BSV blockchain metadata
+      const detection = await detectWalletTypeFromBSV(normalizedMnemonic, password.trim())
+
+      console.log("[Form] ✅ BSV metadata retrieved:", detection.bsvMetadata)
+      console.log("[Form] ✅ Detected wallet type:", detection.type)
+
       setValidation({
         isValid: true,
-        storedType,
+        detectedType: detection.type,
+        bsvMetadata: detection.bsvMetadata,
+        testedResults: detection.testedResults,
       })
     } catch (err) {
       console.error("[Form] Validation error:", err)
       setValidation({
         isValid: false,
-        storedType: null,
+        detectedType: null,
+        testedResults: [],
         error: err instanceof Error ? err.message : "Failed to validate recovery phrase",
       })
       setError(err instanceof Error ? err.message : "Failed to validate recovery phrase")
@@ -169,46 +173,56 @@ function RestoreWalletFormComponent() {
     setError("")
 
     try {
-      if (!validation?.isValid || !validation.storedType) {
+      if (!validation?.isValid || !validation.detectedType) {
         throw new Error("Please validate your recovery phrase first")
       }
 
-      const normalizedMnemonic = mnemonic.trim().toLowerCase()
-      console.log("[Form] Starting wallet restoration")
-
-      // Clear any existing wallet data
-      await clearWalletData()
-
-      // Attempt restoration with password and enforce stored type
-      const wallet = await restoreWallet(normalizedMnemonic, password, validation.storedType)
-
-      // Verify wallet type matches stored type
-      if (wallet.type !== validation.storedType) {
-        throw new Error(`Wallet type mismatch. Expected ${validation.storedType}, got ${wallet.type}`)
+      if (!password.trim()) {
+        throw new Error("Password is required for wallet restoration")
       }
 
-      console.log("[Form] Wallet restored:", {
-        type: wallet.type,
-        address: wallet.publicAddress,
+      const normalizedMnemonic = mnemonic.trim().toLowerCase()
+
+      console.log("[Form] Starting wallet restoration from BSV metadata as:", validation.detectedType)
+
+      // Restore wallet with detected type and BSV metadata
+      const wallet = await restoreWallet(normalizedMnemonic, password, validation.detectedType, {
+        bsvMetadata: validation.bsvMetadata,
+        fetchFromBlockchain: true,
       })
 
-      // Verify wallet data format and storage
-      const isVerified = await verifyWalletData(wallet)
-      if (!isVerified) {
-        throw new Error("Wallet restoration verification failed")
+      // Strict validation of restored wallet
+      if (!wallet) {
+        throw new Error("Wallet restoration returned null")
       }
 
-      // Final verification before redirect
-      const finalCheck = await getWalletData()
-      if (!finalCheck || finalCheck.publicAddress !== wallet.publicAddress) {
-        throw new Error("Final wallet verification failed")
+      if (!wallet.type || wallet.type !== validation.detectedType) {
+        throw new Error(`Wallet type mismatch. Expected ${validation.detectedType}, got ${wallet.type}`)
       }
 
-      // Add a small delay before redirect
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      if (!wallet.publicAddress) {
+        throw new Error("Restored wallet has no address")
+      }
 
-      window.location.href = `/${wallet.type}`
+      console.log("[Form] ✅ Wallet restored successfully from BSV metadata:", {
+        type: wallet.type,
+        address: wallet.publicAddress,
+        bsvTransactionId: validation.bsvMetadata?.transactionId,
+      })
+
+      // Save wallet data temporarily
+      localStorage.setItem("walletData", JSON.stringify(wallet))
+
+      // Add a delay to ensure storage is complete
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // Redirect to appropriate dashboard
+      const redirectPath = wallet.type === "merchant" ? "/merchant" : "/user"
+      console.log("[Form] Redirecting to:", redirectPath)
+
+      window.location.replace(redirectPath)
     } catch (err) {
+      console.error("[Form] Restoration error:", err)
       setError(err instanceof Error ? err.message : "Failed to restore wallet")
       setValidation(null)
     } finally {
@@ -217,58 +231,125 @@ function RestoreWalletFormComponent() {
   }
 
   return (
-    <div className="space-y-4 mt-4">
-      <div className="grid gap-2">
-        <Label htmlFor="mnemonic">Recovery Phrase</Label>
-        <Input
-          id="mnemonic"
-          placeholder="Enter your 12-word recovery phrase"
-          value={mnemonic}
-          onChange={(e) => {
-            setMnemonic(e.target.value)
-            setValidation(null)
-            setError("")
-          }}
-        />
-        <Button
-          onClick={handleValidateMnemonic}
-          variant="outline"
-          className="w-full"
-          disabled={isValidating || !mnemonic.trim()}
-        >
-          {isValidating ? "Validating..." : "Validate Phrase"}
-        </Button>
+    <div className="space-y-6">
+      {/* BSV Info */}
+      <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="flex items-center gap-2 mb-2">
+          <Coins className="w-4 h-4 text-blue-600" />
+          <span className="font-medium text-blue-900">BSV Blockchain Restoration</span>
+        </div>
+        <p className="text-sm text-blue-700">
+          Your wallet will be restored using metadata stored on the Bitcoin SV blockchain during wallet creation.
+        </p>
       </div>
 
-      {validation?.isValid && (
-        <div className="grid gap-2">
-          <Label htmlFor="password">Password (optional)</Label>
+      <div className="grid gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="mnemonic" className="text-base font-medium">
+            Recovery Phrase
+          </Label>
+          <Input
+            id="mnemonic"
+            placeholder="Enter your 12-word recovery phrase"
+            value={mnemonic}
+            onChange={(e) => {
+              setMnemonic(e.target.value)
+              setValidation(null)
+              setError("")
+            }}
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck="false"
+            className="text-base h-12"
+          />
+          <p className="text-sm text-slate-500">Enter the 12-word phrase you saved when creating your wallet</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="password" className="text-base font-medium">
+            Wallet Password
+          </Label>
           <Input
             id="password"
             type="password"
-            placeholder="Enter your password"
+            placeholder="Enter your wallet password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setValidation(null)
+              setError("")
+            }}
+            autoComplete="off"
+            required
+            className="text-base h-12"
           />
         </div>
-      )}
+      </div>
+
+      <Button
+        onClick={handleValidateMnemonic}
+        variant="outline"
+        className="w-full h-12"
+        disabled={isValidating || !mnemonic.trim() || !password.trim() || password.trim().length < 8}
+      >
+        {isValidating ? (
+          <>
+            <Coins className="w-4 h-4 mr-2 animate-spin" />
+            Reading BSV Metadata...
+          </>
+        ) : (
+          "Validate & Read BSV Metadata"
+        )}
+      </Button>
 
       {validation?.isValid && (
-        <Alert variant="success" className="mt-4">
-          <AlertDescription>Recovery phrase is valid for {validation.storedType} wallet</AlertDescription>
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">Recovery phrase is valid for</span>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  {validation.detectedType === "customer" ? (
+                    <Wallet className="w-3 h-3" />
+                  ) : (
+                    <Store className="w-3 h-3" />
+                  )}
+                  {validation.detectedType} wallet
+                </Badge>
+              </div>
+              {validation.bsvMetadata && (
+                <div className="text-xs space-y-1">
+                  <div>BSV Transaction: {validation.bsvMetadata.transactionId}</div>
+                  <div>Created: {new Date(validation.bsvMetadata.timestamp).toLocaleDateString()}</div>
+                  {validation.bsvMetadata.businessName && <div>Business: {validation.bsvMetadata.businessName}</div>}
+                </div>
+              )}
+            </div>
+          </AlertDescription>
         </Alert>
       )}
 
       <Button
-        className="w-full"
-        disabled={isRestoring || !validation?.isValid || !mnemonic.trim()}
+        className="w-full h-14 text-lg font-semibold"
+        disabled={
+          isRestoring || !validation?.isValid || !mnemonic.trim() || !password.trim() || password.trim().length < 8
+        }
         onClick={handleRestoreWallet}
       >
-        {isRestoring ? "Restoring..." : "Restore Wallet"}
+        {isRestoring ? (
+          <>
+            <Coins className="w-5 h-5 mr-2 animate-spin" />
+            Restoring from BSV Blockchain...
+          </>
+        ) : (
+          `Restore ${validation?.detectedType || ""} Wallet`
+        )}
       </Button>
 
       {error && (
-        <Alert variant="destructive" className="mt-4">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}

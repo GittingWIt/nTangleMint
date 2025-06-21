@@ -1,18 +1,29 @@
-import { Loader2 } from "lucide-react"
-import type { LucideProps } from "lucide-react"
+import * as React from "react"
 import { cn } from "@/lib/utils"
 
-interface LoadingSpinnerProps {
-  size?: "sm" | "md" | "lg"
-  className?: string
+export interface LoadingSpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
+  size?: "sm" | "lg" | "default"
 }
 
-export function LoadingSpinner({ size = "md", className, ...props }: LoadingSpinnerProps & LucideProps) {
-  const sizeClasses = {
-    sm: "h-4 w-4",
-    md: "h-6 w-6",
-    lg: "h-8 w-8",
-  }
-
-  return <Loader2 className={cn("animate-spin text-muted-foreground", sizeClasses[size], className)} {...props} />
-}
+export const LoadingSpinner = React.forwardRef<HTMLDivElement, LoadingSpinnerProps>(
+  ({ className, size = "default", ...props }, ref) => {
+    let sizeClass = "h-6 w-6"
+    if (size === "sm") {
+      sizeClass = "h-4 w-4"
+    } else if (size === "lg") {
+      sizeClass = "h-8 w-8"
+    }
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "animate-spin rounded-full border-2 border-dashed border-primary border-t-transparent",
+          sizeClass,
+          className,
+        )}
+        {...props}
+      />
+    )
+  },
+)
+LoadingSpinner.displayName = "LoadingSpinner"

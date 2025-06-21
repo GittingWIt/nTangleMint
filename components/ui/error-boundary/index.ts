@@ -1,3 +1,3 @@
-import ErrorBoundary from "@/components/ErrorBoundary"
+import ErrorBoundary from "@/components/error-boundary"
 
 export { ErrorBoundary }

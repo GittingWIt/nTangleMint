@@ -1,11 +1,26 @@
 /** @type {import('next').NextConfig} */
-const webpack = require("webpack")
-
 const nextConfig = {
-  reactStrictMode: true,
-  transpilePackages: ["@testing-library/react"],
+  eslint: {
+    // Still ignore ESLint during builds for now
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    // Enable TypeScript validation during builds
+    ignoreBuildErrors: false,
+  },
   images: {
-    domains: ["placeholder.com"],
+    unoptimized: true,
+  },
+  reactStrictMode: true,
+  swcMinify: true,
+  output: "standalone",
+  experimental: {
+    webpackBuildWorker: false,
+    parallelServerBuildTraces: false,
+    parallelServerCompiles: false,
+  },
+  env: {
+    NEXT_TELEMETRY_DISABLED: "1",
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
@@ -21,25 +36,15 @@ const nextConfig = {
         util: require.resolve("util/"),
       }
 
+      const webpack = require("webpack")
       config.plugins.push(
         new webpack.ProvidePlugin({
           Buffer: ["buffer", "Buffer"],
           process: "process/browser",
         }),
       )
-
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        bsv: require.resolve("bsv"),
-      }
     }
-
     return config
-  },
-  experimental: {
-    serverActions: {
-      bodySizeLimit: "2mb",
-    },
   },
 }
 

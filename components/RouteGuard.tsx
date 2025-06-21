@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { getWalletData } from "@/lib/storage"
+import { getWalletData } from "@/lib/storage-compat"
 import { canAccessRoute, getDefaultRoute, isPublicRoute } from "@/lib/routes"
 
 // Assuming MERCHANT_PATHS is defined elsewhere, e.g., in a config file.

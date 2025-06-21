@@ -1,289 +1,329 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CalendarIcon, Users, ShoppingBag, ArrowRight } from "lucide-react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import type { Program } from "@/types"
+import { CalendarIcon, Users, Trash2, Award, Tag, Settings, Check } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+import { useWalletData } from "@/hooks/use-wallet-data"
+import { hasJoinedProgram, joinProgram, leaveProgram } from "@/lib/program-participation"
 import { debug } from "@/lib/debug"
 
 interface ProgramCardProps {
-  program: Program
-  userType: "user" | "merchant" | null
-  userWalletAddress: string | null
-  onJoin: () => void
+  program: any
+  onDelete?: () => void
+  showActions?: boolean
+  isMerchantWallet?: boolean
+  isProgramOwner?: boolean
 }
 
-// Define a more specific type for the metadata
-interface ProgramMetadata {
-  type?: string
-  merchantName?: string
-  merchant?: string
-  discountAmount?: string | number
-  discountType?: string
-  expirationDate?: string | Date
-  [key: string]: any // Allow for other properties
-}
-
-// Extend the Program type to include the more specific metadata type
-// and ensure all properties we're using are explicitly defined
-interface ExtendedProgram {
-  id: string
-  name: string
-  description: string
-  type?: string
-  status?: string
-  isPublic?: boolean
-  merchantAddress: string
-  discount?: string
-  expirationDate?: string | Date
-  participants?: string[]
-  stats?: {
-    participantCount?: number
-    [key: string]: any
-  }
-  metadata?: ProgramMetadata
-  [key: string]: any // Allow for other properties
-}
-
-export function ProgramCard({ program, userType, userWalletAddress, onJoin }: ProgramCardProps) {
-  // Cast program to ExtendedProgram to use the more specific type
-  const typedProgram = program as ExtendedProgram
-
+export function ProgramCard({
+  program,
+  onDelete,
+  showActions = true,
+  isMerchantWallet = false,
+  isProgramOwner = false,
+}: ProgramCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false)
   const [isJoined, setIsJoined] = useState(false)
-  const [isClipped, setIsClipped] = useState(false)
-  const [participantCount, setParticipantCount] = useState(getParticipantCount())
+  const [isJoining, setIsJoining] = useState(false)
+  const { toast } = useToast()
+  const { walletData } = useWalletData()
 
-  // Check if user is already a participant or has clipped the coupon
+  const effectiveIsMerchantWallet = isMerchantWallet || walletData?.type === "merchant"
+
   useEffect(() => {
-    if (!userWalletAddress) return
-
-    // Check if user is in participants
-    const joined =
-      Array.isArray(typedProgram.participants) && typedProgram.participants.some((p) => p === userWalletAddress)
-    setIsJoined(joined)
-
-    // For coupon-type programs, check if the user has already clipped the coupon
-    if (typedProgram.type === "coupon-book" || typedProgram.metadata?.type === "coupon") {
+    // Check if user has joined this program
+    const checkJoinStatus = async () => {
       try {
-        const userCouponsKey = `user-coupons-${userWalletAddress}`
-        const couponsStr = localStorage.getItem(userCouponsKey) || "[]"
-        const userCoupons = JSON.parse(couponsStr)
-
-        // Check if this program's coupon is already clipped
-        const clipped = userCoupons.some((c: any) => c.id === typedProgram.id)
-        setIsClipped(clipped)
-
-        // If clipped but not joined, update the joined status
-        if (clipped && !joined) {
-          setIsJoined(true)
-        }
+        const joined = hasJoinedProgram(program.id)
+        setIsJoined(joined)
+        debug(`Program ${program.id} join status:`, joined)
       } catch (error) {
-        console.error("Error checking clipped coupons:", error)
+        console.error("Error checking join status:", error)
       }
     }
-  }, [typedProgram, userWalletAddress])
 
-  // Format date to readable string
-  const formatDate = (date: Date | string) => {
-    if (!date) return "No expiration"
+    checkJoinStatus()
+  }, [program.id])
+
+  // Simple date formatting function
+  const formatCardDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return "No date"
 
     try {
-      // Handle different date formats
-      const dateObj = typeof date === "string" ? new Date(date) : date instanceof Date ? date : new Date()
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) return "Invalid date"
 
-      return dateObj.toLocaleDateString("en-US", {
-        month: "numeric",
-        day: "numeric",
-        year: "numeric",
-      })
-    } catch (e) {
-      console.error("Error formatting date:", e)
+      const month = (date.getMonth() + 1).toString().padStart(2, "0")
+      const day = date.getDate().toString().padStart(2, "0")
+      const year = date.getFullYear().toString()
+
+      return `${month}/${day}/${year}`
+    } catch (error) {
       return "Invalid date"
     }
   }
 
-  // Determine status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-      case "expired":
-        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-      case "draft":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
+  // Format date for display
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "No expiration"
+    return `Expires: ${formatCardDate(dateString)}`
+  }
+
+  // Handle delete with confirmation
+  const handleDelete = () => {
+    if (isDeleting) {
+      onDelete?.()
+      setIsDeleting(false)
+      toast({
+        title: "Program deleted",
+        description: `${program.name} has been deleted.`,
+        variant: "destructive",
+      })
+    } else {
+      setIsDeleting(true)
     }
   }
 
-  // Get discount information
-  const getDiscountInfo = (): string => {
-    if (typedProgram.discount) {
-      return typedProgram.discount
-    }
+  // Handle join/leave program
+  const handleJoinLeave = async () => {
+    try {
+      setIsJoining(true)
 
-    // Try to get from metadata
-    if (typedProgram.metadata) {
-      const { discountAmount, discountType } = typedProgram.metadata
-      if (discountAmount && discountType) {
-        return discountType === "percentage" ? `${discountAmount}% off` : `$${discountAmount} off`
+      let result
+      if (isJoined) {
+        result = leaveProgram(program.id)
+      } else {
+        result = joinProgram(program.id)
       }
-    }
 
-    return "Special offer"
+      if (result.success) {
+        setIsJoined(!isJoined)
+        toast({
+          title: isJoined ? "Left program" : "Joined program",
+          description: result.message,
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: result.message,
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error joining/leaving program:", error)
+      toast({
+        title: "Error",
+        description: "An error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsJoining(false)
+    }
   }
 
-  // Get merchant name
-  const getMerchantName = () => {
-    if (typedProgram.metadata?.merchantName) {
-      return typedProgram.metadata.merchantName
-    }
+  // Get program type display name
+  const getProgramType = () => {
+    if (!program.type) return "Program"
 
-    if (typedProgram.metadata?.merchant) {
-      return typedProgram.metadata.merchant
+    switch (program.type) {
+      case "punch-card":
+        return "Punch Card"
+      case "coupon-book":
+        return "Coupon"
+      case "loyalty":
+        return "Loyalty Program"
+      default:
+        return program.type.replace(/-/g, " ")
     }
-
-    // Use a shortened version of the merchant address
-    if (typedProgram.merchantAddress) {
-      const addr = typedProgram.merchantAddress
-      return addr.substring(0, 6) + "..." + addr.substring(addr.length - 4)
-    }
-
-    return "Unknown Merchant"
   }
 
-  // Get participant count
-  function getParticipantCount() {
-    if (typedProgram.stats?.participantCount) {
-      return typedProgram.stats.participantCount
-    }
-
-    if (Array.isArray(typedProgram.participants)) {
-      return typedProgram.participants.length
-    }
-
-    return 0
+  // Get program status display name with proper capitalization
+  const getStatusDisplay = () => {
+    if (!program.status) return "Active"
+    return program.status.charAt(0).toUpperCase() + program.status.slice(1).toLowerCase()
   }
 
-  // Handle joining the program
-  const handleJoin = () => {
-    if (!userWalletAddress) {
-      onJoin()
-      return
-    }
+  // Get expiration date
+  const expirationDate = program.expirationDate || (program.metadata && program.metadata.expirationDate) || null
+
+  // Check if program is expired - simplified logic
+  const checkIfExpired = (dateString: string | null | undefined): boolean => {
+    if (!dateString) return false
 
     try {
-      // Add user to program participants
-      const updatedParticipants = Array.isArray(typedProgram.participants)
-        ? [...typedProgram.participants, userWalletAddress]
-        : [userWalletAddress]
+      const expDate = new Date(dateString)
+      const today = new Date()
 
-      // Update program in storage
-      const allPrograms = JSON.parse(localStorage.getItem("programs") || "[]")
-      const programIndex = allPrograms.findIndex((p: any) => p.id === typedProgram.id)
+      // Reset time to compare just dates
+      expDate.setHours(23, 59, 59, 999)
+      today.setHours(0, 0, 0, 0)
 
-      if (programIndex !== -1) {
-        allPrograms[programIndex].participants = updatedParticipants
-        localStorage.setItem("programs", JSON.stringify(allPrograms))
-      }
-
-      // For coupon-book type programs, also clip the coupon
-      if ((typedProgram.type === "coupon-book" || typedProgram.metadata?.type === "coupon") && !isClipped) {
-        // Dispatch coupon clipped event
-        const clipEvent = new CustomEvent("couponClipped", {
-          detail: {
-            couponId: typedProgram.id,
-            userId: userWalletAddress,
-            merchantAddress: typedProgram.merchantAddress,
-          },
-        })
-        window.dispatchEvent(clipEvent)
-        setIsClipped(true)
-        debug(`Dispatched couponClipped event for program ${typedProgram.id}`)
-      }
-
-      // Update local state
-      setIsJoined(true)
-      setParticipantCount(updatedParticipants.length)
-
-      // Show feedback
-      alert(`You have successfully joined the ${typedProgram.name} program!`)
+      return expDate < today
     } catch (error) {
-      console.error("Error joining program:", error)
-      alert("There was an error joining this program. Please try again.")
+      console.error("Error checking expiration:", error)
+      return false
     }
   }
 
-  // Check if user is the merchant who created this program
-  const isCreator = userWalletAddress && userWalletAddress === typedProgram.merchantAddress
+  const expired = checkIfExpired(expirationDate)
 
-  // Check if user can join the program
-  const canJoin = userType === "user" && !isCreator && !isJoined && !isClipped
+  const getParticipantCount = () => {
+    return program.participants ? program.participants.length : 0
+  }
+
+  const isPunchCard = program.type === "punch-card"
 
   return (
-    <Card className="overflow-hidden h-full flex flex-col">
-      <CardHeader className="pb-2">
+    <div className={`overflow-hidden border rounded-lg ${expired ? "border-red-200 bg-red-50/30" : "border-border"}`}>
+      <div className="pb-2 p-6">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-lg">{typedProgram.name}</CardTitle>
-          <Badge className={getStatusColor(typedProgram.status || "active")}>
-            {(typedProgram.status || "active").charAt(0).toUpperCase() + (typedProgram.status || "active").slice(1)}
-          </Badge>
-        </div>
-        <CardDescription className="line-clamp-2">{typedProgram.description}</CardDescription>
-      </CardHeader>
-      <CardContent className="pb-2 flex-grow">
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center text-muted-foreground">
-            <ShoppingBag className="mr-2 h-4 w-4" />
-            <span>Merchant: {getMerchantName()}</span>
+          <div>
+            <h3 className="text-lg font-semibold">{program.name}</h3>
+            <p className="text-sm text-muted-foreground">{program.description}</p>
           </div>
-          <div className="flex items-center text-muted-foreground">
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            <span>
-              Expires:{" "}
-              {typedProgram.expirationDate
-                ? formatDate(typedProgram.expirationDate)
-                : typedProgram.metadata?.expirationDate
-                  ? formatDate(typedProgram.metadata.expirationDate)
-                  : "No expiration"}
+          {onDelete && isProgramOwner && (
+            <button
+              className={`p-1 h-auto ${isDeleting ? "text-red-600" : "text-muted-foreground"}`}
+              onClick={handleDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="pb-2 px-6">
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
+              {getProgramType()}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                expired
+                  ? "border-transparent bg-red-500 text-white hover:bg-red-600"
+                  : program.status === "active"
+                    ? "border-transparent bg-green-500 text-white hover:bg-green-600"
+                    : "border-transparent bg-gray-500 text-white hover:bg-gray-600"
+              }`}
+            >
+              {expired ? "Expired" : getStatusDisplay()}
             </span>
           </div>
-          <div className="flex items-center text-muted-foreground">
-            <Users className="mr-2 h-4 w-4" />
-            <span>{participantCount} participants</span>
+
+          {expirationDate && (
+            <div className="flex items-center text-sm text-muted-foreground">
+              <CalendarIcon className="h-4 w-4 mr-2 text-gray-500" />
+              <span className={expired ? "text-red-600 font-medium" : ""}>{formatDate(expirationDate)}</span>
+            </div>
+          )}
+
+          {program.participants && (
+            <div className="flex items-center text-sm text-gray-600">
+              <Users className="h-4 w-4 mr-2 text-gray-500" />
+              <span>{program.participants.length} participants</span>
+            </div>
+          )}
+
+          {program.metadata?.discountAmount && (
+            <div className="flex items-center font-medium">
+              <span>
+                {program.metadata.discountType === "percentage"
+                  ? `${program.metadata.discountAmount}% off`
+                  : `${program.metadata.discountAmount} off`}
+              </span>
+            </div>
+          )}
+
+          {/* Punch card specific UI */}
+          {program.type === "punch-card" && program.metadata?.requiredPunches && (
+            <div className="mt-4 p-3 rounded-md bg-amber-50 border border-amber-100">
+              <div className="flex justify-between items-center">
+                <div className="text-sm font-medium text-amber-800 flex items-center">
+                  <Award className="h-4 w-4 mr-1.5" />
+                  Punch Card Program
+                </div>
+                <div className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                  {program.metadata?.requiredPunches || 5} punches
+                </div>
+              </div>
+              <div className="mt-2 text-sm text-amber-700">
+                <div className="flex items-center">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></div>
+                  Reward: {program.metadata?.reward || "Free coffee"}
+                </div>
+                <div className="flex items-center mt-1">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 mr-1.5"></div>
+                  Completion Rate: {getParticipantCount() > 0 ? "20%" : "0%"}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isPunchCard && program.name?.toLowerCase().includes("discount") && (
+            <div className="mt-4 p-3 rounded-md bg-emerald-50 border border-emerald-100">
+              <div className="flex justify-between items-center">
+                <div className="text-sm font-medium text-emerald-800 flex items-center">
+                  <Tag className="h-4 w-4 mr-1.5" />
+                  Discount Program
+                </div>
+                <div className="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                  {program.discount || "10% off"}
+                </div>
+              </div>
+              <div className="mt-2 text-sm text-emerald-700">
+                <div className="flex items-center">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></div>
+                  Product: {program.description?.split(" on ")[1] || "Freeze Dried Strawberries"}
+                </div>
+                <div className="flex items-center mt-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5"></div>
+                  Usage: {getParticipantCount() > 0 ? `${getParticipantCount()} redemptions` : "No redemptions yet"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showActions && (
+        <div className="flex justify-between items-center p-4 border-t bg-gray-50">
+          <div className="text-sm font-medium">{isPunchCard ? "Punch Card" : "Loyalty Program"}</div>
+          <div className="flex gap-2">
+            {effectiveIsMerchantWallet ? (
+              <Link
+                href={`/merchant/programs/${program.id}`}
+                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 gap-1"
+              >
+                <Settings className="h-4 w-4 mr-1" />
+                Manage
+              </Link>
+            ) : isJoined ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleJoinLeave}
+                disabled={isJoining}
+                className="border-green-500 text-green-700 bg-green-50 hover:bg-green-100"
+              >
+                <Check className="h-4 w-4 mr-1" />
+                {isJoining ? "Processing..." : "Joined"}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleJoinLeave}
+                disabled={isJoining}
+                className="border-amber-500 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/30"
+              >
+                {isJoining ? "Joining..." : "Join Program"}
+              </Button>
+            )}
           </div>
         </div>
-      </CardContent>
-      <CardFooter className="flex justify-between pt-2">
-        <div className="font-medium">{getDiscountInfo()}</div>
-        {canJoin ? (
-          <Button variant="default" size="sm" onClick={handleJoin}>
-            Join Program
-          </Button>
-        ) : userType === "merchant" ? (
-          <Button variant="outline" size="sm" disabled>
-            Merchants Cannot Join
-          </Button>
-        ) : isCreator ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/merchant/program/${typedProgram.id}`}>
-              Manage
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
-        ) : isJoined || isClipped ? (
-          <Button variant="outline" size="sm" disabled>
-            {isClipped ? "Already Clipped" : "Already Joined"}
-          </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={onJoin}>
-            Sign In to Join
-          </Button>
-        )}
-      </CardFooter>
-    </Card>
+      )}
+    </div>
   )
 }

@@ -1,9 +1,11 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
+import { getPrograms, updateProgram, getWalletData, setWalletData } from "@/lib/storage-compat"
+import safeStorage from "@/lib/safe-storage"
 import { debug } from "@/lib/debug"
-import { getWalletData } from "@/lib/storage"
-import { getDirectProgramsFromStorage } from "@/lib/direct-storage-access"
+import { storageService } from "@/lib/storage-service-compat"
+import type { Program, ProgramType, ProgramStatus } from "@/types" // Import Program interface
 
 declare global {
   interface Window {
@@ -18,8 +20,8 @@ interface WalletData {
   [key: string]: any // Allow for other properties
 }
 
-// Define a type for coupon program
-interface CouponProgram {
+// Define a type for coupon program - now exported to fix the TypeScript error
+export interface CouponProgram {
   id: string
   name?: string
   description?: string
@@ -41,9 +43,45 @@ interface CouponClippedEvent extends CustomEvent {
   }
 }
 
+// Custom UUID generator function
+function uuidv4(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === "x" ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+// Simple toast implementation
+const toast = {
+  success: (message: string) => {
+    console.log(`Success: ${message}`)
+    if (typeof window !== "undefined") {
+      alert(`Success: ${message}`)
+    }
+  },
+  error: (message: string) => {
+    console.error(`Error: ${message}`)
+    if (typeof window !== "undefined") {
+      alert(`Error: ${message}`)
+    }
+  },
+  info: (message: string) => {
+    console.info(`Info: ${message}`)
+    if (typeof window !== "undefined") {
+      alert(`Info: ${message}`)
+    }
+  },
+}
+
 export function CouponHandler() {
   // Use a ref to track if the component is mounted
   const isMounted = useRef(true)
+  const [couponId, setCouponId] = useState("")
+  const [discount, setDiscount] = useState(0)
+  const [walletData, setWalletState] = useState<any>(null)
+  const [program, setProgram] = useState<any>(null)
+  const [allPrograms, setAllPrograms] = useState<any[]>([])
 
   useEffect(() => {
     // Set mounted flag
@@ -66,7 +104,7 @@ export function CouponHandler() {
 
       try {
         // Get the current wallet data with timeout
-        const walletDataPromise = getWalletData()
+        const walletDataPromise = Promise.resolve(getWalletData())
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Wallet data fetch timeout")), 1000),
         )
@@ -91,8 +129,8 @@ export function CouponHandler() {
         }
 
         // Get the coupon details from storage - with performance optimization
-        const allPrograms = getDirectProgramsFromStorage()
-        const couponProgram = allPrograms.find((p: any) => p.id === couponId) as CouponProgram | undefined
+        const allPrograms = getPrograms()
+        const couponProgram = allPrograms.find((p: Program) => p.id === couponId)
 
         if (!couponProgram) {
           console.error("Coupon not found in programs")
@@ -126,6 +164,9 @@ export function CouponHandler() {
         }
 
         // Create the user coupon object
+        const couponStatus: ProgramStatus = "active" as ProgramStatus
+        const couponType: ProgramType = "coupon-book" as ProgramType
+
         const userCoupon = {
           id: couponId,
           name: couponProgram.name || "Unnamed Coupon",
@@ -134,8 +175,8 @@ export function CouponHandler() {
           clippedAt: new Date().toISOString(),
           expirationDate: getExpirationDate(),
           discount: getDiscountInfo(),
-          status: "active",
-          type: "coupon-book",
+          status: couponStatus,
+          type: couponType,
           metadata: couponProgram.metadata || {},
         }
 
@@ -144,7 +185,7 @@ export function CouponHandler() {
         let userCoupons = []
 
         // Use a more efficient try-catch block
-        const existingCouponsStr = localStorage.getItem(userCouponsKey)
+        const existingCouponsStr = safeStorage.getItem(userCouponsKey)
         if (existingCouponsStr) {
           try {
             userCoupons = JSON.parse(existingCouponsStr)
@@ -165,9 +206,9 @@ export function CouponHandler() {
         // Add the new coupon
         userCoupons.push(userCoupon)
 
-        // Save back to localStorage - with batched writes
+        // Save back to storage - with batched writes
         try {
-          localStorage.setItem(userCouponsKey, JSON.stringify(userCoupons))
+          safeStorage.setItem(userCouponsKey, JSON.stringify(userCoupons))
           console.log("Saved user coupons:", userCoupons)
         } catch (error) {
           console.error("Error saving user coupons:", error)
@@ -177,24 +218,26 @@ export function CouponHandler() {
 
         // ALSO UPDATE PROGRAM PARTICIPANTS
         try {
-          // Get all programs
-          const programsStr = localStorage.getItem("programs")
-          if (programsStr) {
-            const programs = JSON.parse(programsStr)
-            const programIndex = programs.findIndex((p: any) => p.id === couponId)
+          // Get the program
+          const programs = getPrograms()
+          const programToUpdate = programs.find((p: Program) => p.id === couponId)
 
-            if (programIndex !== -1) {
-              // Initialize participants array if it doesn't exist
-              if (!programs[programIndex].participants) {
-                programs[programIndex].participants = []
-              }
+          if (programToUpdate) {
+            // Initialize participants array if it doesn't exist
+            if (!programToUpdate.participants) {
+              programToUpdate.participants = []
+            }
 
-              // Add user to participants if not already there
-              if (!programs[programIndex].participants.includes(userId)) {
-                programs[programIndex].participants.push(userId)
-                localStorage.setItem("programs", JSON.stringify(programs))
-                console.log("Updated program participants:", programs[programIndex].participants)
-              }
+            // Add user to participants if not already there
+            if (!programToUpdate.participants.includes(userId)) {
+              programToUpdate.participants.push(userId)
+
+              // Update the program
+              updateProgram(couponId, {
+                participants: programToUpdate.participants,
+              })
+
+              console.log("Updated program participants:", programToUpdate.participants)
             }
           }
         } catch (error) {
@@ -241,6 +284,22 @@ export function CouponHandler() {
     // Add event listener - no type assertion needed now
     window.addEventListener("couponClipped", handleCouponClipped)
 
+    // Load wallet data using our compatibility layer
+    const loadWalletData = async () => {
+      try {
+        const data = await getWalletData()
+        setWalletState(data)
+      } catch (error) {
+        console.error("Error loading wallet data:", error)
+      }
+    }
+
+    loadWalletData()
+
+    // Ensure allPrograms is always an array
+    const programs = getPrograms()
+    setAllPrograms(Array.isArray(programs) ? programs : [])
+
     // Clean up
     return () => {
       isMounted.current = false
@@ -250,6 +309,166 @@ export function CouponHandler() {
     }
   }, [])
 
+  const handleCouponIdChange = (e: any) => {
+    setCouponId(e.target.value)
+  }
+
+  const handleDiscountChange = (e: any) => {
+    setDiscount(Number.parseInt(e.target.value))
+  }
+
+  const handleCreateCoupon = () => {
+    if (!discount) {
+      toast.error("Discount cannot be empty")
+      return
+    }
+
+    // Define status with explicit type casting
+    const programStatus: ProgramStatus = "active" as ProgramStatus
+    const programType: ProgramType = "coupon-book" as ProgramType
+
+    const newProgram: Program = {
+      id: uuidv4(),
+      name: "Discount Coupon",
+      description: `${discount}% off your purchase`,
+      merchantAddress: storageService.getMerchantAddress(),
+      status: programStatus,
+      isPublic: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      participants: [],
+      type: programType,
+      metadata: {
+        discountAmount: discount.toString(), // Convert number to string
+        discountType: "percentage",
+        type: "coupon",
+      },
+      discount: `${discount}% off`,
+    }
+
+    // Use addProgram from storage-compat
+    storageService.saveProgram(newProgram)
+
+    // Update local state
+    setAllPrograms(getPrograms())
+    toast.success("Coupon created successfully")
+  }
+
+  const handleGetCoupon = () => {
+    if (!couponId) {
+      toast.error("Coupon ID cannot be empty")
+      return
+    }
+
+    const program = storageService.getProgramById(couponId)
+
+    if (!program) {
+      toast.error("Coupon not found")
+      return
+    }
+
+    setProgram(program)
+    toast.success("Coupon fetched successfully")
+  }
+
+  const handleApplyCoupon = () => {
+    if (!couponId) {
+      toast.error("Coupon ID cannot be empty")
+      return
+    }
+
+    const program = storageService.getProgramById(couponId)
+
+    if (!program) {
+      toast.error("Coupon not found")
+      return
+    }
+
+    if (!walletData) {
+      toast.error("Wallet data not found")
+      return
+    }
+
+    const updatedWalletData = {
+      ...walletData,
+      balance: walletData.balance - (Number(program.metadata?.discountAmount) || 0),
+    }
+
+    // Use setWalletData from storage-compat
+    setWalletData(updatedWalletData)
+    setWalletState(updatedWalletData)
+    toast.success("Coupon applied successfully")
+  }
+
   // This component doesn't render anything
-  return null
+  return (
+    <div>
+      <h1>Coupon Handler</h1>
+
+      <div>
+        <h2>Create Coupon</h2>
+        <input type="number" placeholder="Discount" value={discount} onChange={handleDiscountChange} />
+        <button onClick={handleCreateCoupon}>Create Coupon</button>
+      </div>
+
+      <div>
+        <h2>Get Coupon</h2>
+        <input type="text" placeholder="Coupon ID" value={couponId} onChange={handleCouponIdChange} />
+        <button onClick={handleGetCoupon}>Get Coupon</button>
+        {program && (
+          <div>
+            <h3>Coupon Details</h3>
+            <p>ID: {program.id}</p>
+            <p>Name: {program.name}</p>
+            <p>
+              Discount: {program.metadata?.discountAmount}
+              {program.metadata?.discountType === "percentage" ? "%" : "$"}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2>Apply Coupon</h2>
+        <input type="text" placeholder="Coupon ID" value={couponId} onChange={handleCouponIdChange} />
+        <button onClick={handleApplyCoupon}>Apply Coupon</button>
+      </div>
+
+      <div>
+        <h2>Wallet Data</h2>
+        {walletData && (
+          <div>
+            <p>Address: {walletData.publicAddress}</p>
+            <p>Type: {walletData.type}</p>
+            <p>Balance: {walletData.balance || "N/A"}</p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h2>All Programs</h2>
+        {Array.isArray(allPrograms) && allPrograms.length > 0 ? (
+          allPrograms.map((program: any) => (
+            <div key={program.id} className="p-2 border-b">
+              <p>
+                <strong>ID:</strong> {program.id}
+              </p>
+              <p>
+                <strong>Name:</strong> {program.name || "Unnamed"}
+              </p>
+              <p>
+                <strong>Type:</strong> {program.type || "Unknown"}
+              </p>
+              <p>
+                <strong>Discount:</strong> {program.metadata?.discountAmount}
+                {program.metadata?.discountType === "percentage" ? "%" : "$"}
+              </p>
+            </div>
+          ))
+        ) : (
+          <p>No programs available</p>
+        )}
+      </div>
+    </div>
+  )
 }

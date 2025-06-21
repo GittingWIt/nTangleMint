@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
-import { getWalletData, addProgram } from "@/lib/storage"
+import { getWalletData, addProgram } from "@/lib/storage-compat"
 import type { Program } from "@/types"
+import { debug } from "@/lib/debug"
 
 export async function createOrUpdateProgram(formData: FormData): Promise<{ success: boolean; error?: string }> {
   try {
@@ -54,6 +55,38 @@ export async function createOrUpdateProgram(formData: FormData): Promise<{ succe
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to save program",
+    }
+  }
+}
+
+/**
+ * Join a program as a participant
+ * @param programId The ID of the program to join
+ */
+export async function joinProgram(formData: FormData) {
+  const programId = formData.get("programId") as string
+  const userAddress = formData.get("userAddress") as string
+
+  if (!programId || !userAddress) {
+    return { success: false, message: "Missing required fields" }
+  }
+
+  try {
+    // This is a server action, but for the demo we'll return success
+    // In a real implementation, this would update a database
+    debug(`Server action: Joining program ${programId} for user ${userAddress}`)
+
+    return {
+      success: true,
+      message: "Successfully joined program",
+      programId,
+      userAddress,
+    }
+  } catch (error) {
+    debug("Error in joinProgram server action:", error)
+    return {
+      success: false,
+      message: `Failed to join program: ${error}`,
     }
   }
 }

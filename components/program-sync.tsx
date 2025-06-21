@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { STORAGE_KEYS, STORAGE_EVENTS } from "@/lib/constants"
-import { addProgram, getPrograms } from "@/lib/storage"
+import { getPrograms, addProgram } from "@/lib/storage-compat"
 import { debug } from "@/lib/debug"
 
 export function ProgramSync() {

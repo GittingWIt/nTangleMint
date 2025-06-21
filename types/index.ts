@@ -1,67 +1,21 @@
-export interface WalletData {
-  mnemonic?: string
-  privateKey: string
-  publicKey: string
-  publicAddress: string
-  type: "user" | "merchant"
-  createdAt: string
-  updatedAt: string
-  path?: string
-  // Add merchant-specific properties
-  businessName?: string
-  businessId?: string
-}
+// Re-export wallet types
+export type { WalletData, WalletType, WalletCreationData, WalletRestoreData } from "./wallet"
+export { isValidWalletType, isCustomerWallet, isMerchantWallet, createDefaultWalletData } from "./wallet"
 
-export interface MerchantWalletData extends WalletData {
-  type: "merchant"
-  businessName: string
-  businessId: string
-  verified: boolean
-}
-
-export interface Program {
-  id: string
-  type: ProgramType
-  name: string
-  description: string
-  createdAt: string
-  updatedAt: string
-  merchantAddress: string
-  status: ProgramStatus
-  metadata: ProgramMetadata
-  stats?: ProgramStats
-  version: number
-  previousVersionId?: string
-  isPublic: boolean
-  allowedParticipants?: string[]
-  maxParticipants?: number
-  perUserLimit?: number
-  requiresReceipt?: boolean
-  minimumAge?: number
-  geographicRestrictions?: string[]
-  // For backward compatibility with existing code
-  merchant_address?: string
-  participants: string[]
-  rewards_claimed?: number
-}
-
-export interface UserParticipation {
-  programId: string
-  points: number
-  punchCount: number
-  tier: number
-  joinedAt: string
-}
-
+// Program types
 export type ProgramType = "coupon-book" | "punch-card" | "points" | "tiered" | "coalition"
-
 export type ProgramStatus = "draft" | "active" | "paused" | "expired" | "cancelled"
 
-export interface ProgramStats {
-  participantCount: number
-  rewardsIssued: number
-  rewardsRedeemed: number
-  totalValue: number
+export interface Product {
+  id: string
+  name: string
+  description?: string
+  price?: string
+  imageUrl?: string
+  upc?: string
+  manufacturer?: string
+  createdAt: string
+  [key: string]: any
 }
 
 export interface ProgramMetadata {
@@ -69,10 +23,13 @@ export interface ProgramMetadata {
   startDate?: string
   endDate?: string
   terms?: string
+  products?: Product[]
+  isPublic?: boolean
   discountAmount?: string
   discountType?: "percentage" | "fixed"
   expirationDate?: string
   upcCodes?: string[]
+  merchantName?: string
   requiredPunches?: number
   reward?: string
   pointsPerDollar?: number
@@ -85,4 +42,51 @@ export interface ProgramMetadata {
   }[]
   partnerAddresses?: string[]
   revenueShare?: number
+  [key: string]: any
+}
+
+export interface Program {
+  id: string
+  type: ProgramType
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+  merchantAddress: string
+  status: ProgramStatus
+  metadata: ProgramMetadata
+  version?: number
+  previousVersionId?: string
+  isPublic: boolean
+  allowedParticipants?: string[]
+  participants: string[]
+  maxParticipants?: number
+  perUserLimit?: number
+  requiresReceipt?: boolean
+  minimumAge?: number
+  geographicRestrictions?: string[]
+  expirationDate?: string
+  discount?: string
+  [key: string]: any
+}
+
+// Customer transaction types
+export interface CustomerTransaction {
+  id: string
+  type: "join" | "leave" | "progress" | "reward"
+  programId: string
+  programName: string
+  customerAddress: string
+  merchantAddress: string
+  timestamp: string
+  metadata?: any
+}
+
+export interface CustomerParticipationSummary {
+  totalPrograms: number
+  activePrograms: number
+  totalRewards: number
+  totalProgress: number
+  averageCompletion: number
+  transactions: CustomerTransaction[]
 }

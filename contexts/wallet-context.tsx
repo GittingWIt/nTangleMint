@@ -1,163 +1,85 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useRef } from "react"
-import { getWalletData } from "@/lib/storage"
-import { walletState, trackComponentMount } from "@/lib/wallet-sync"
-import { debug } from "@/lib/debug"
-import type { WalletData } from "@/types"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 
 interface WalletContextType {
-  wallet: WalletData | null
-  isLoading: boolean
-  error: string | null
-  refreshWallet: () => Promise<void>
+  walletAddress: string | null
+  setWalletAddress: (address: string | null) => void
+  isConnected: boolean
+  connectWallet: () => Promise<void>
+  disconnectWallet: () => void
 }
 
 const WalletContext = createContext<WalletContextType>({
-  wallet: null,
-  isLoading: true,
-  error: null,
-  refreshWallet: async () => {},
+  walletAddress: null,
+  setWalletAddress: () => {},
+  isConnected: false,
+  connectWallet: async () => {},
+  disconnectWallet: () => {},
 })
 
-export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [wallet, setWallet] = useState<WalletData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const mountedRef = useRef(false)
-  const refreshAttempts = useRef(0)
+interface WalletProviderProps {
+  children: React.ReactNode
+}
 
-  // Track component mount for Fast Refresh detection
+const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
+  const [walletAddress, setWalletAddress] = useState<string | null>(null)
+  const isConnected = !!walletAddress
+
   useEffect(() => {
-    trackComponentMount()
-    mountedRef.current = true
+    const getWalletData = () => {
+      try {
+        const data = localStorage.getItem("walletData")
+        return data ? JSON.parse(data) : null
+      } catch {
+        return null
+      }
+    }
 
-    return () => {
-      mountedRef.current = false
+    const storedData = getWalletData()
+    if (storedData && storedData.address) {
+      setWalletAddress(storedData.address)
     }
   }, [])
 
-  const refreshWallet = async () => {
-    if (!mountedRef.current) return
-
+  const connectWallet = useCallback(async () => {
     try {
-      setIsLoading(true)
-      setError(null)
-      refreshAttempts.current += 1
-
-      debug(`WalletContext: Refreshing wallet data (attempt ${refreshAttempts.current})`)
-
-      // Get data with exponential backoff for retries
-      let data: WalletData | null = null
-      let retryCount = 0
-      const maxRetries = 3
-
-      while (retryCount < maxRetries) {
-        data = await getWalletData()
-        if (data) break
-
-        retryCount++
-        if (retryCount < maxRetries) {
-          const delay = Math.pow(2, retryCount) * 50
-          debug(`WalletContext: Retry ${retryCount} after ${delay}ms`)
-          await new Promise((resolve) => setTimeout(resolve, delay))
-        }
-      }
-
-      // Update the shared wallet state
-      walletState.update(data)
-
-      if (!mountedRef.current) return
-
-      if (data) {
-        debug("WalletContext: Wallet data found")
-        setWallet(data)
-      } else {
-        debug("WalletContext: No wallet data found")
-        setWallet(null)
-      }
-    } catch (err) {
-      if (!mountedRef.current) return
-
-      debug("WalletContext: Error refreshing wallet", err)
-      setError(err instanceof Error ? err.message : "Failed to load wallet data")
-      walletState.update(null)
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false)
-      }
-    }
-  }
-
-  // Initial load
-  useEffect(() => {
-    let isMounted = true
-
-    const initializeWallet = async () => {
-      try {
-        // First check if wallet state is already initialized
-        const stateWallet = walletState.getWalletData()
-        if (stateWallet) {
-          setWallet(stateWallet)
-          setIsLoading(false)
+      // Get existing wallet data from localStorage
+      const existingData = localStorage.getItem("walletData")
+      if (existingData) {
+        const walletData = JSON.parse(existingData)
+        if (walletData.publicAddress) {
+          setWalletAddress(walletData.publicAddress)
           return
         }
-
-        // Otherwise refresh from storage
-        await refreshWallet()
-      } catch (error) {
-        debug("WalletContext: Error during initialization", error)
-        if (isMounted) {
-          setError("Failed to initialize wallet")
-          setIsLoading(false)
-        }
       }
-    }
 
-    initializeWallet()
-
-    return () => {
-      isMounted = false
+      // If no existing wallet, user needs to create/restore one
+      console.log("No wallet found - user should create or restore a wallet")
+    } catch (error) {
+      console.error("Error connecting wallet:", error)
     }
   }, [])
 
-  // Subscribe to wallet state changes
-  useEffect(() => {
-    const unsubscribe = walletState.subscribe((data) => {
-      if (!mountedRef.current) return
-
-      debug("WalletContext: Received wallet update from state container")
-      setWallet(data)
-      setIsLoading(false)
-    })
-
-    // Listen for wallet updates
-    const handleWalletUpdated = () => {
-      refreshWallet()
-    }
-
-    window.addEventListener("walletUpdated", handleWalletUpdated)
-
-    // Handle storage events directly
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === "walletData") {
-        refreshWallet()
-      }
-    }
-
-    window.addEventListener("storage", handleStorage)
-
-    return () => {
-      unsubscribe()
-      window.removeEventListener("walletUpdated", handleWalletUpdated)
-      window.removeEventListener("storage", handleStorage)
-    }
+  const disconnectWallet = useCallback(() => {
+    setWalletAddress(null)
+    localStorage.removeItem("walletData")
   }, [])
 
-  return <WalletContext.Provider value={{ wallet, isLoading, error, refreshWallet }}>{children}</WalletContext.Provider>
+  const value: WalletContextType = {
+    walletAddress,
+    setWalletAddress,
+    isConnected,
+    connectWallet,
+    disconnectWallet,
+  }
+
+  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
 }
 
-export function useWallet() {
+const useWallet = () => {
   return useContext(WalletContext)
 }
+
+export { WalletProvider, useWallet }

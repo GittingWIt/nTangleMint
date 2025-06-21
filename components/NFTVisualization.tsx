@@ -1,13 +1,26 @@
-'use client'
+"use client"
 
-import React, { useEffect, useRef } from 'react'
-import Image from 'next/image'
+import type React from "react"
+import { useEffect, useRef } from "react"
+import Image from "next/image"
 
 export interface NFTLayer {
-  type: 'color' | 'gradient' | 'image' | 'icon' | 'pattern' | 'svg'
+  type: "color" | "gradient" | "image" | "icon" | "pattern" | "svg"
   content: string
   opacity?: number
-  blendMode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'color-dodge' | 'color-burn' | 'hard-light' | 'soft-light' | 'difference' | 'exclusion'
+  blendMode?:
+    | "normal"
+    | "multiply"
+    | "screen"
+    | "overlay"
+    | "darken"
+    | "lighten"
+    | "color-dodge"
+    | "color-burn"
+    | "hard-light"
+    | "soft-light"
+    | "difference"
+    | "exclusion"
   rotation?: number
   scale?: number
   position?: {
@@ -18,16 +31,16 @@ export interface NFTLayer {
 
 export interface NFTDesign {
   layers: NFTLayer[]
-  aspectRatio?: '1:1' | '2:1' | '16:9' | string
+  aspectRatio?: "1:1" | "2:1" | "16:9" | string
   borderRadius?: string
   animation?: {
-    type: 'rotate' | 'pulse' | 'shake' | 'none'
+    type: "rotate" | "pulse" | "shake" | "none"
     duration?: number
     delay?: number
   }
   border?: {
     width: number
-    style: 'solid' | 'dashed' | 'dotted'
+    style: "solid" | "dashed" | "dotted"
     color: string
   }
   shadow?: {
@@ -42,22 +55,22 @@ export interface NFTDesign {
 const defaultNFTDesign: NFTDesign = {
   layers: [
     {
-      type: 'gradient',
-      content: 'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%)'
+      type: "gradient",
+      content: "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%)",
     },
     {
-      type: 'icon',
-      content: '☕',
+      type: "icon",
+      content: "☕",
       opacity: 0.1,
-      blendMode: 'overlay'
-    }
+      blendMode: "overlay",
+    },
   ],
-  aspectRatio: '2:1',
-  borderRadius: '0.5rem',
+  aspectRatio: "2:1",
+  borderRadius: "0.5rem",
   animation: {
-    type: 'none',
-    duration: 2
-  }
+    type: "none",
+    duration: 2,
+  },
 }
 
 interface NFTVisualizationProps {
@@ -69,15 +82,15 @@ interface NFTVisualizationProps {
 
 export const NFTVisualization: React.FC<NFTVisualizationProps> = ({
   design = {},
-  className = '',
+  className = "",
   onClick,
-  interactive = false
+  interactive = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const mergedDesign: NFTDesign = {
     ...defaultNFTDesign,
     ...design,
-    layers: [...(design.layers || defaultNFTDesign.layers)]
+    layers: [...(design.layers || defaultNFTDesign.layers)],
   }
 
   useEffect(() => {
@@ -85,7 +98,8 @@ export const NFTVisualization: React.FC<NFTVisualizationProps> = ({
 
     const container = containerRef.current
     let isHovering = false
-    let requestId: number
+    // Initialize requestId with a default value to fix the TypeScript error
+    const requestId = 0
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isHovering) return
@@ -99,55 +113,58 @@ export const NFTVisualization: React.FC<NFTVisualizationProps> = ({
 
     const handleMouseEnter = () => {
       isHovering = true
-      container.style.transition = 'transform 0.1s'
+      container.style.transition = "transform 0.1s"
     }
 
     const handleMouseLeave = () => {
       isHovering = false
-      container.style.transition = 'transform 0.5s'
-      container.style.transform = 'perspective(1000px) rotateY(0) rotateX(0)'
+      container.style.transition = "transform 0.5s"
+      container.style.transform = "perspective(1000px) rotateY(0) rotateX(0)"
     }
 
     if (interactive) {
-      container.addEventListener('mousemove', handleMouseMove)
-      container.addEventListener('mouseenter', handleMouseEnter)
-      container.addEventListener('mouseleave', handleMouseLeave)
+      container.addEventListener("mousemove", handleMouseMove)
+      container.addEventListener("mouseenter", handleMouseEnter)
+      container.addEventListener("mouseleave", handleMouseLeave)
     }
 
     return () => {
       if (interactive) {
-        container.removeEventListener('mousemove', handleMouseMove)
-        container.removeEventListener('mouseenter', handleMouseEnter)
-        container.removeEventListener('mouseleave', handleMouseLeave)
-        cancelAnimationFrame(requestId)
+        container.removeEventListener("mousemove", handleMouseMove)
+        container.removeEventListener("mouseenter", handleMouseEnter)
+        container.removeEventListener("mouseleave", handleMouseLeave)
+        // Only cancel animation frame if requestId is valid
+        if (requestId) {
+          cancelAnimationFrame(requestId)
+        }
       }
     }
   }, [interactive])
 
   const renderLayer = (layer: NFTLayer, index: number) => {
     const commonStyles: React.CSSProperties = {
-      position: 'absolute',
+      position: "absolute",
       top: 0,
       left: 0,
-      width: '100%',
-      height: '100%',
+      width: "100%",
+      height: "100%",
       opacity: layer.opacity !== undefined ? layer.opacity : 1,
-      mixBlendMode: layer.blendMode || 'normal',
+      mixBlendMode: layer.blendMode || "normal",
       transform: `
         rotate(${layer.rotation || 0}deg)
         scale(${layer.scale || 1})
         translate(${layer.position?.x || 0}px, ${layer.position?.y || 0}px)
-      `
+      `,
     }
 
     switch (layer.type) {
-      case 'color':
+      case "color":
         return <div key={index} style={{ ...commonStyles, backgroundColor: layer.content }} />
-      
-      case 'gradient':
+
+      case "gradient":
         return <div key={index} style={{ ...commonStyles, background: layer.content }} />
-      
-      case 'image':
+
+      case "image":
         return (
           <Image
             key={index}
@@ -158,68 +175,60 @@ export const NFTVisualization: React.FC<NFTVisualizationProps> = ({
             style={commonStyles}
           />
         )
-      
-      case 'icon':
+
+      case "icon":
         return (
-          <div 
-            key={index} 
-            style={{ 
-              ...commonStyles, 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              fontSize: '6rem'
+          <div
+            key={index}
+            style={{
+              ...commonStyles,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "6rem",
             }}
           >
             {layer.content}
           </div>
         )
-      
-      case 'pattern':
+
+      case "pattern":
         return (
           <div
             key={index}
             style={{
               ...commonStyles,
               backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(layer.content)}")`,
-              backgroundRepeat: 'repeat'
+              backgroundRepeat: "repeat",
             }}
           />
         )
-      
-      case 'svg':
-        return (
-          <div
-            key={index}
-            style={commonStyles}
-            dangerouslySetInnerHTML={{ __html: layer.content }}
-          />
-        )
-      
+
+      case "svg":
+        return <div key={index} style={commonStyles} dangerouslySetInnerHTML={{ __html: layer.content }} />
+
       default:
         return null
     }
   }
 
   const containerStyle: React.CSSProperties = {
-    position: 'relative',
-    width: '100%',
-    aspectRatio: mergedDesign.aspectRatio?.replace(':', '/'),
+    position: "relative",
+    width: "100%",
+    aspectRatio: mergedDesign.aspectRatio?.replace(":", "/"),
     borderRadius: mergedDesign.borderRadius,
-    overflow: 'hidden',
-    cursor: onClick ? 'pointer' : 'default',
-    transition: 'transform 0.3s ease-in-out',
+    overflow: "hidden",
+    cursor: onClick ? "pointer" : "default",
+    transition: "transform 0.3s ease-in-out",
     ...(mergedDesign.border && {
-      border: `${mergedDesign.border.width}px ${mergedDesign.border.style} ${mergedDesign.border.color}`
+      border: `${mergedDesign.border.width}px ${mergedDesign.border.style} ${mergedDesign.border.color}`,
     }),
     ...(mergedDesign.shadow && {
-      boxShadow: `${mergedDesign.shadow.x}px ${mergedDesign.shadow.y}px ${mergedDesign.shadow.blur}px ${mergedDesign.shadow.spread}px ${mergedDesign.shadow.color}`
-    })
+      boxShadow: `${mergedDesign.shadow.x}px ${mergedDesign.shadow.y}px ${mergedDesign.shadow.blur}px ${mergedDesign.shadow.spread}px ${mergedDesign.shadow.color}`,
+    }),
   }
 
-  const animationClass = mergedDesign.animation?.type !== 'none'
-    ? `nft-${mergedDesign.animation?.type}`
-    : ''
+  const animationClass = mergedDesign.animation?.type !== "none" ? `nft-${mergedDesign.animation?.type}` : ""
 
   return (
     <div

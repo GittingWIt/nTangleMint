@@ -68,7 +68,8 @@ export function CreateProgramForm() {
   // Check wallet status on mount
   useEffect(() => {
     const checkWallet = () => {
-      const wallet = walletState.getWalletData(true)
+      // Fixed: Removed the 'true' argument
+      const wallet = walletState.getWalletData()
 
       if (wallet && wallet.publicAddress && wallet.type === "merchant") {
         setWalletStatus("valid")
@@ -111,7 +112,8 @@ export function CreateProgramForm() {
       setError(null)
 
       // Check wallet connection
-      const wallet = walletState.getWalletData(true)
+      // Fixed: Removed the 'true' argument
+      const wallet = walletState.getWalletData()
 
       debug("Creating program with wallet:", {
         hasWallet: !!wallet,

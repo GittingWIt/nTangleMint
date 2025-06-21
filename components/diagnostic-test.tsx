@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import ErrorBoundary from "@/components/ErrorBoundary"
+import ErrorBoundary from "@/components/error-boundary"
 import { AlertCircle, CheckCircle } from "lucide-react"
 
 export function DiagnosticTest() {
