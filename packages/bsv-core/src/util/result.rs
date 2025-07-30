@@ -1,120 +1,128 @@
-use hex::FromHexError;
+use std::fmt;
+use std::error::Error as StdError;
 use ring::error::Unspecified as RingUnspecifiedError;
-use base58::FromBase58Error as FromBase58Error;
-use secp256k1::Error as Secp256k1Error;
-use std::io;
-use std::num::ParseIntError;
+use hex::FromHexError;
+use base58::FromBase58Error;
 use std::string::FromUtf8Error;
 
-/// Standard error type used in the library
+// Import crypto errors based on target
+#[cfg(not(target_arch = "wasm32"))]
+use secp256k1::Error as Secp256k1Error;
+#[cfg(target_arch = "wasm32")]
+use k256::ecdsa::Error as K256Error;
+
 #[derive(Debug)]
 pub enum Error {
-    /// An argument provided is invalid
-    BadArgument(String),
-    /// The data given is not valid
     BadData(String),
-    /// Base58 string could not be decoded
-    FromBase58Error(FromBase58Error),
-    /// Hex string could not be decoded
-    FromHexError(FromHexError),
-    /// UTF8 parsing error
-    FromUtf8Error(FromUtf8Error),
-    /// The state is not valid
-    IllegalState(String),
-    /// The operation is not valid on this object
-    InvalidOperation(String),
-    /// Standard library IO error
-    IOError(io::Error),
-    /// Error parsing an integer
-    ParseIntError(ParseIntError),
-    /// Error evaluating the script
-    ScriptError(String),
-    /// Error in the Secp256k1 library
-    Secp256k1Error(Secp256k1Error),
-    /// The operation timed out
+    BadArgument(String),
+    SpvBadProofFormat,
+    SpvBadMerkleProof,
+    SpvDuplicateTransaction,
+    SpvUnknownTransaction,
     Timeout,
-    /// An unknown error in the Ring library
-    UnspecifiedRingError,
-    /// The data or functionality is not supported by this library
-    Unsupported(String),
+    Io(std::io::Error),
+    Ring(RingUnspecifiedError),
+    Hex(FromHexError),
+    FromBase58Error(FromBase58Error),
+    FromUtf8Error(FromUtf8Error),
+    IOError(std::io::Error),
+    InvalidOperation(String),
+    IllegalState(String),
+    ScriptError(String),
+    // Crypto errors - target specific
+    #[cfg(not(target_arch = "wasm32"))]
+    Secp256k1Error(Secp256k1Error),
+    #[cfg(target_arch = "wasm32")]
+    K256Error(K256Error),
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::BadArgument(s) => f.write_str(&format!("Bad argument: {}", s)),
-            Error::BadData(s) => f.write_str(&format!("Bad data: {}", s)),
-            Error::FromBase58Error(e) => f.write_str(&format!("Base58 decoding error: {:?}", e)), // Changed {} to {:?}
-            Error::FromHexError(e) => f.write_str(&format!("Hex decoding error: {}", e)),
-            Error::FromUtf8Error(e) => f.write_str(&format!("Utf8 parsing error: {}", e)),
-            Error::IllegalState(s) => f.write_str(&format!("Illegal state: {}", s)),
-            Error::InvalidOperation(s) => f.write_str(&format!("Invalid operation: {}", s)),
-            Error::IOError(e) => f.write_str(&format!("IO error: {}", e)),
-            Error::ParseIntError(e) => f.write_str(&format!("ParseIntError: {}", e)),
-            Error::ScriptError(s) => f.write_str(&format!("Script error: {}", s)),
-            Error::Secp256k1Error(e) => f.write_str(&format!("Secp256k1 error: {}", e)),
-            Error::Timeout => f.write_str("Timeout"),
-            Error::UnspecifiedRingError => f.write_str("Unspecified ring error"),
-            Error::Unsupported(s) => f.write_str(&format!("Unsupported: {}", s)),
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::BadData(ref s) => write!(f, "Bad data: {}", s),
+            Error::BadArgument(ref s) => write!(f, "Bad argument: {}", s),
+            Error::SpvBadProofFormat => write!(f, "Bad proof format"),
+            Error::SpvBadMerkleProof => write!(f, "Bad merkle proof"),
+            Error::SpvDuplicateTransaction => write!(f, "Duplicate transaction"),
+            Error::SpvUnknownTransaction => write!(f, "Unknown transaction"),
+            Error::Timeout => write!(f, "Timeout"),
+            Error::Io(ref e) => write!(f, "IO error: {}", e),
+            Error::Ring(ref e) => write!(f, "Ring error: {:?}", e),
+            Error::Hex(ref e) => write!(f, "Hex error: {}", e),
+            Error::FromBase58Error(ref e) => write!(f, "Base58 error: {:?}", e), // Fixed: use {:?}
+            Error::FromUtf8Error(ref e) => write!(f, "UTF8 error: {}", e),
+            Error::IOError(ref e) => write!(f, "IO error: {}", e),
+            Error::InvalidOperation(ref s) => write!(f, "Invalid operation: {}", s),
+            Error::IllegalState(ref s) => write!(f, "Illegal state: {}", s),
+            Error::ScriptError(ref s) => write!(f, "Script error: {}", s),
+            #[cfg(not(target_arch = "wasm32"))]
+            Error::Secp256k1Error(ref e) => write!(f, "Secp256k1 error: {}", e),
+            #[cfg(target_arch = "wasm32")]
+            Error::K256Error(ref e) => write!(f, "K256 error: {}", e),
         }
     }
 }
 
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::FromBase58Error(_) => None, // FromBase58Error does not implement Error
-            Error::FromHexError(e) => Some(e),
-            Error::FromUtf8Error(e) => Some(e),
-            Error::IOError(e) => Some(e),
-            Error::ParseIntError(e) => Some(e),
-            Error::Secp256k1Error(e) => Some(e),
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match *self {
+            Error::Io(ref e) => Some(e),
+            Error::Hex(ref e) => Some(e),
+            Error::FromUtf8Error(ref e) => Some(e),
+            Error::IOError(ref e) => Some(e),
+            #[cfg(not(target_arch = "wasm32"))]
+            Error::Secp256k1Error(ref e) => Some(e),
+            #[cfg(target_arch = "wasm32")]
+            Error::K256Error(ref e) => Some(e),
             _ => None,
         }
     }
 }
 
-impl From<FromBase58Error> for Error {
-    fn from(e: FromBase58Error) -> Self {
-        Error::FromBase58Error(e)
-    }
-}
-
-impl From<FromHexError> for Error {
-    fn from(e: FromHexError) -> Self {
-        Error::FromHexError(e)
-    }
-}
-
-impl From<FromUtf8Error> for Error {
-    fn from(e: FromUtf8Error) -> Self {
-        Error::FromUtf8Error(e)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Self {
-        Error::IOError(e)
-    }
-}
-
-impl From<ParseIntError> for Error {
-    fn from(e: ParseIntError) -> Self {
-        Error::ParseIntError(e)
-    }
-}
-
-impl From<Secp256k1Error> for Error {
-    fn from(e: Secp256k1Error) -> Self {
-        Error::Secp256k1Error(e)
+// All the From implementations
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Error {
+        Error::Io(e)
     }
 }
 
 impl From<RingUnspecifiedError> for Error {
-    fn from(_: RingUnspecifiedError) -> Self {
-        Error::UnspecifiedRingError
+    fn from(e: RingUnspecifiedError) -> Error {
+        Error::Ring(e)
     }
 }
 
-/// Standard Result used in the library
+impl From<FromHexError> for Error {
+    fn from(e: FromHexError) -> Error {
+        Error::Hex(e)
+    }
+}
+
+impl From<FromBase58Error> for Error {
+    fn from(e: FromBase58Error) -> Error {
+        Error::FromBase58Error(e)
+    }
+}
+
+impl From<FromUtf8Error> for Error {
+    fn from(e: FromUtf8Error) -> Error {
+        Error::FromUtf8Error(e)
+    }
+}
+
+// Target-specific crypto error conversions
+#[cfg(not(target_arch = "wasm32"))]
+impl From<Secp256k1Error> for Error {
+    fn from(e: Secp256k1Error) -> Error {
+        Error::Secp256k1Error(e)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl From<K256Error> for Error {
+    fn from(e: K256Error) -> Error {
+        Error::K256Error(e)
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;

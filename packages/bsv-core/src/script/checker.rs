@@ -1,8 +1,16 @@
 use crate::messages::Tx;
 use crate::transaction::sighash::{sighash, SigHashCache, SIGHASH_FORKID};
 use crate::util::{Error, Result};
-use secp256k1::{Message, PublicKey, Secp256k1};
-use secp256k1::ecdsa::Signature;
+
+// Conditional imports - use secp256k1 for native, k256 for WASM
+#[cfg(not(target_arch = "wasm32"))]
+use secp256k1::{Message, PublicKey, Secp256k1, ecdsa::Signature};
+
+#[cfg(target_arch = "wasm32")]
+use k256::{
+    ecdsa::{Signature, VerifyingKey},
+    //elliptic_curve::sec1::ToEncodedPoint, // Removed unused import
+};
 
 const LOCKTIME_THRESHOLD: i32 = 500000000;
 const SEQUENCE_LOCKTIME_DISABLE_FLAG: u32 = 1 << 31;
@@ -39,6 +47,7 @@ pub struct TransactionChecker<'a> {
 }
 
 impl<'a> Checker for TransactionChecker<'a> {
+    #[cfg(not(target_arch = "wasm32"))]
     fn check_sig(&mut self, sig: &[u8], pubkey: &[u8], script: &[u8]) -> Result<bool> {
         if sig.len() < 1 {
             return Err(Error::ScriptError("Signature too short".to_string()));
@@ -59,9 +68,33 @@ impl<'a> Checker for TransactionChecker<'a> {
         let secp = Secp256k1::verification_only();
         let mut signature = Signature::from_der(der_sig)?;
         signature.normalize_s();
-        let message = Message::from_digest(sig_hash.0);
+        let message = Message::from_slice(&sig_hash.0)?;
         let public_key = PublicKey::from_slice(&pubkey)?;
-        Ok(secp.verify_ecdsa(message, &signature, &public_key).is_ok())
+        Ok(secp.verify_ecdsa(&message, &signature, &public_key).is_ok())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn check_sig(&mut self, sig: &[u8], pubkey: &[u8], script: &[u8]) -> Result<bool> {
+        if sig.len() < 1 {
+            return Err(Error::ScriptError("Signature too short".to_string()));
+        }
+        let sighash_type = sig[sig.len() - 1];
+        if self.require_sighash_forkid && sighash_type & SIGHASH_FORKID == 0 {
+            return Err(Error::ScriptError("SIGHASH_FORKID not present".to_string()));
+        }
+        let sig_hash = sighash(
+            self.tx,
+            self.input,
+            script,
+            self.satoshis,
+            sighash_type,
+            self.sig_hash_cache,
+        )?;
+        let der_sig = &sig[0..sig.len() - 1];
+        let signature = Signature::from_der(der_sig)?;
+        let verifying_key = VerifyingKey::from_sec1_bytes(pubkey)?;
+        use k256::ecdsa::signature::Verifier;
+        Ok(verifying_key.verify(&sig_hash.0, &signature).is_ok())
     }
 
     fn check_locktime(&self, locktime: i32) -> Result<bool> {
@@ -414,26 +447,23 @@ mod tests {
         let secp = Secp256k1::new();
 
         let private_key1 = [1; 32];
-        let secret_key1 = SecretKey::from_slice(&private_key1).unwrap();
-        let pk1 = PublicKey::from_secret_key(&secp, &secret_key1).serialize();
-        let pkh1 = hash160(&pk1);
-
         let private_key2 = [2; 32];
+        let secret_key1 = SecretKey::from_slice(&private_key1).unwrap();
         let secret_key2 = SecretKey::from_slice(&private_key2).unwrap();
+        let pk1 = PublicKey::from_secret_key(&secp, &secret_key1).serialize();
         let pk2 = PublicKey::from_secret_key(&secp, &secret_key2).serialize();
-        let pkh2 = hash160(&pk2);
 
         let mut lock_script1 = Script::new();
         lock_script1.append(OP_DUP);
         lock_script1.append(OP_HASH160);
-        lock_script1.append_data(&pkh1.0);
+        lock_script1.append_data(&hash160(&pk1).0);
         lock_script1.append(OP_EQUALVERIFY);
         lock_script1.append(OP_CHECKSIG);
 
         let mut lock_script2 = Script::new();
         lock_script2.append(OP_DUP);
         lock_script2.append(OP_HASH160);
-        lock_script2.append_data(&pkh2.0);
+        lock_script2.append_data(&hash160(&pk2).0);
         lock_script2.append(OP_EQUALVERIFY);
         lock_script2.append(OP_CHECKSIG);
 

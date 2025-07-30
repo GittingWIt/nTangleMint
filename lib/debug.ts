@@ -1,61 +1,164 @@
 /**
- * Debug utility that's safe for server-side rendering
+ * Debug utilities for BSV blockchain operations
+ * Provides consistent logging across all BSV-related functions
  */
 
-const DEBUG_MODE = process.env.NEXT_PUBLIC_DEBUG_MODE === "true"
+export interface DebugConfig {
+  enabled: boolean
+  logLevel: "info" | "warn" | "error" | "debug"
+  modules: {
+    "wallet-generation": boolean
+    "wallet-validation": boolean
+    "wallet-creation": boolean
+    "wallet-restoration": boolean
+    "bsv-wallet": boolean // ADD: Missing module for BSV wallet hook
+    "program-loader": boolean
+    "program-participation": boolean
+    "wallet-detector": boolean
+    "bsv-simulation": boolean
+  }
+}
+
+// Debug configuration - can be controlled via environment variables
+const debugConfig: DebugConfig = {
+  enabled: process.env.NEXT_PUBLIC_DEBUG_MODE === "true" || process.env.NODE_ENV === "development",
+  logLevel: (process.env.NEXT_PUBLIC_LOG_LEVEL as any) || "debug",
+  modules: {
+    "wallet-generation": true,
+    "wallet-validation": true,
+    "wallet-creation": true,
+    "wallet-restoration": true,
+    "bsv-wallet": true, // ADD: Enable BSV wallet debugging
+    "program-loader": true,
+    "program-participation": true,
+    "wallet-detector": true,
+    "bsv-simulation": true,
+  },
+}
 
 /**
- * Log debug messages only in debug mode
+ * Debug logging function with module filtering
  */
-export function debug(...args: any[]): void {
-  if (DEBUG_MODE) {
-    if (typeof window !== "undefined") {
-      console.log("[DEBUG]", ...args)
-    }
+export function debugLog(
+  module: keyof DebugConfig["modules"],
+  message: string,
+  data?: any,
+  level: "info" | "warn" | "error" | "debug" = "debug",
+): void {
+  if (!debugConfig.enabled || !debugConfig.modules[module]) {
+    return
+  }
+
+  const timestamp = new Date().toISOString()
+  const prefix = `[${timestamp}] [${module.toUpperCase()}]`
+
+  switch (level) {
+    case "error":
+      console.error(`${prefix} ERROR:`, message, data ? data : "")
+      break
+    case "warn":
+      console.warn(`${prefix} WARN:`, message, data ? data : "")
+      break
+    case "info":
+      console.info(`${prefix} INFO:`, message, data ? data : "")
+      break
+    case "debug":
+    default:
+      console.log(`${prefix} DEBUG:`, message, data ? data : "")
+      break
   }
 }
 
 /**
- * Log warnings in debug mode
+ * Simple debug function for basic logging (used by program-recovery.ts)
  */
-export function debugWarn(...args: any[]): void {
-  if (DEBUG_MODE) {
-    if (typeof window !== "undefined") {
-      console.warn("[DEBUG WARNING]", ...args)
-    }
+export function debug(message: string, data?: any): void {
+  if (debugConfig.enabled) {
+    console.log(`[DEBUG] ${message}`, data ? data : "")
   }
 }
 
 /**
- * Log errors in debug mode
+ * Performance timing utility for BSV operations
  */
-export function debugError(...args: any[]): void {
-  if (DEBUG_MODE) {
-    if (typeof window !== "undefined") {
-      console.error("[DEBUG ERROR]", ...args)
-    }
+export class PerformanceTimer {
+  private startTime: number
+  private module: string
+  private operation: string
+
+  constructor(module: string, operation: string) {
+    this.module = module
+    this.operation = operation
+    this.startTime = performance.now()
+    debugLog(module as keyof DebugConfig["modules"], `Starting operation: ${operation}`)
+  }
+
+  end(): number {
+    const endTime = performance.now()
+    const duration = endTime - this.startTime
+    debugLog(this.module as keyof DebugConfig["modules"], `Completed operation: ${this.operation}`, {
+      duration: `${duration.toFixed(2)}ms`,
+    })
+    return duration
   }
 }
 
 /**
- * Time an operation in debug mode
+ * Format BSV transaction data for logging
  */
-export function debugTime(label: string): () => void {
-  if (!DEBUG_MODE || typeof window === "undefined") {
-    return () => {}
-  }
+export function formatTransactionLog(txData: {
+  txId?: string
+  type: string
+  from?: string
+  to?: string
+  amount?: number
+  programId?: string
+}): string {
+  const parts = [
+    `Type: ${txData.type}`,
+    txData.txId ? `TxId: ${txData.txId}` : null,
+    txData.from ? `From: ${txData.from.substring(0, 8)}...` : null,
+    txData.to ? `To: ${txData.to.substring(0, 8)}...` : null,
+    txData.amount ? `Amount: ${txData.amount}` : null,
+    txData.programId ? `Program: ${txData.programId}` : null,
+  ].filter(Boolean)
 
-  console.time(`[DEBUG TIME] ${label}`)
-  return () => console.timeEnd(`[DEBUG TIME] ${label}`)
+  return parts.join(" | ")
 }
 
 /**
- * Log an object in debug mode
+ * Log BSV blockchain operation result
  */
-export function debugObject(label: string, obj: any): void {
-  if (DEBUG_MODE && typeof window !== "undefined") {
-    console.group(`[DEBUG OBJECT] ${label}`)
-    console.dir(obj)
-    console.groupEnd()
-  }
+export function logBSVOperation(
+  module: keyof DebugConfig["modules"],
+  operation: string,
+  result: { success: boolean; message: string; txId?: string; data?: any },
+): void {
+  const level = result.success ? "info" : "error"
+  const status = result.success ? "SUCCESS" : "FAILED"
+
+  debugLog(
+    module,
+    `${operation} ${status}: ${result.message}`,
+    {
+      txId: result.txId,
+      data: result.data,
+    },
+    level,
+  )
+}
+
+/**
+ * Enable/disable debug logging for specific modules
+ */
+export function setDebugModule(module: keyof DebugConfig["modules"], enabled: boolean): void {
+  debugConfig.modules[module] = enabled
+  debugLog(module, `Debug logging ${enabled ? "enabled" : "disabled"} for module: ${module}`)
+}
+
+/**
+ * Get current debug configuration
+ */
+export function getDebugConfig(): DebugConfig {
+  return { ...debugConfig }
 }

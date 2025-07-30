@@ -1,17 +1,67 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next",
-      "config": {
-        "installCommand": "npm install --force",
-        "buildCommand": "node build.js"
-      }
-    }
-  ],
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": ".next",
   "env": {
     "NEXT_TELEMETRY_DISABLED": "1",
-    "NODE_OPTIONS": "--max_old_space_size=4096"
+    "NODE_OPTIONS": "--max_old_space_size=4096",
+    "NEXT_PUBLIC_DEBUG_MODE": "@next_public_debug_mode",
+    "NEXT_PUBLIC_LOG_LEVEL": "@next_public_log_level",
+    "BSV_NETWORK": "@bsv_network",
+    "NEXT_PUBLIC_TEST_MODE": "@next_public_test_mode"
+  },
+  "functions": {
+    "app/api/**/*.ts": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    },
+    {
+      "source": "/packages/bsv-core/pkg/(.*)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/wasm"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ],
+  "regions": ["iad1"],
+  "github": {
+    "silent": true
   }
 }

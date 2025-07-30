@@ -8,13 +8,21 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { getWalletData } from "@/lib/storage-compat"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import type { Program } from "@/types"
 import { PROGRAM_TYPES } from "@/lib/constants"
 
 interface ProgramDetailsProps {
   programId: string
+}
+
+interface WalletData {
+  publicAddress: string
+  type: "customer" | "merchant"
+  privateKey?: string
+  mnemonic?: string
+  createdAt: string
+  updatedAt: string
 }
 
 // Define an extended program type that includes the properties we need
@@ -36,11 +44,107 @@ interface ExtendedProgram extends Program {
 export default function ProgramDetails({ programId }: ProgramDetailsProps) {
   const router = useRouter()
   const [program, setProgram] = useState<ExtendedProgram | null>(null)
-  const [walletData, setWalletData] = useState<Awaited<ReturnType<typeof getWalletData>> | null>(null)
+  const [walletData, setWalletData] = useState<WalletData | null>(null)
   const [isJoined, setIsJoined] = useState(false)
   const [loading, setLoading] = useState(true)
   const [joinLoading, setJoinLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // TODO: Replace with BSV wallet authentication/session management
+  // Production-ready wallet data loading function
+  const getWalletData = async (): Promise<WalletData | null> => {
+    try {
+      // TODO: In production, replace with BSV session/authentication
+      // const bsvSession = await bsv_rust::get_wallet_session()
+      // if (bsvSession) return bsvSession
+
+      // Check bsv-wallet-session first (primary wallet storage)
+      const walletStr = localStorage.getItem("bsv-wallet-session")
+      if (walletStr) {
+        const data = JSON.parse(walletStr)
+        return {
+          publicAddress: data.address || data.publicAddress,
+          type: data.type || "customer",
+          privateKey: data.privateKey,
+          mnemonic: data.mnemonic,
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+        }
+      }
+
+      // Fallback to devWalletData (development/testing)
+      const devWalletStr = localStorage.getItem("devWalletData")
+      if (devWalletStr) {
+        const data = JSON.parse(devWalletStr)
+        return {
+          publicAddress: data.publicAddress || data.address,
+          type: data.type || "customer",
+          privateKey: data.privateKey,
+          mnemonic: data.mnemonic,
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
+        }
+      }
+
+      console.log("[Wallet] No wallet data found in localStorage")
+      return null
+    } catch (error) {
+      console.error("[Wallet] Error loading wallet data:", error)
+      return null
+    }
+  }
+
+  // TODO: Replace with BSV blockchain API call
+  // Load program data from localStorage (production-ready with error handling)
+  const loadProgramData = async (id: string): Promise<ExtendedProgram | null> => {
+    try {
+      // TODO: Replace with BSV API call to get program by ID
+      // const bsvProgram = await bsv_rust::get_program_by_id(id)
+      // if (bsvProgram) {
+      //   return convertBsvProgramToExtended(bsvProgram)
+      // }
+
+      // Check global programs first
+      const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
+      const foundProgram = globalPrograms.find((p: ExtendedProgram) => p.id === id)
+
+      if (foundProgram) {
+        console.log("[Program] Found program in globalPrograms:", foundProgram.name)
+        return foundProgram
+      }
+
+      // Check merchant-specific programs
+      const merchantPrograms = JSON.parse(localStorage.getItem("merchantPrograms") || "[]")
+      const merchantProgram = merchantPrograms.find((p: ExtendedProgram) => p.id === id)
+
+      if (merchantProgram) {
+        console.log("[Program] Found program in merchantPrograms:", merchantProgram.name)
+        return merchantProgram
+      }
+
+      console.log("[Program] Program not found:", id)
+      return null
+    } catch (error) {
+      console.error("[Program] Error loading program data:", error)
+      return null
+    }
+  }
+
+  // TODO: Replace with BSV blockchain query
+  // Check if user has joined a program
+  const checkUserJoinedProgram = async (walletAddress: string, programId: string): Promise<boolean> => {
+    try {
+      // TODO: Replace with BSV API call to check user participation
+      // const isParticipant = await bsv_rust::check_program_participation(programId, walletAddress)
+      // return isParticipant
+
+      const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${walletAddress}`) || "[]")
+      return userPrograms.includes(programId)
+    } catch (error) {
+      console.error("[Program] Error checking user programs:", error)
+      return false
+    }
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -48,14 +152,20 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
         setLoading(true)
         setError(null)
 
+        console.log("[Program Details] Loading data for program:", programId)
+
         // Load wallet data
         const data = await getWalletData()
         setWalletData(data)
 
+        if (data) {
+          console.log("[Program Details] Wallet loaded:", data.publicAddress, data.type)
+        } else {
+          console.log("[Program Details] No wallet data found")
+        }
+
         // Load program data
-        // In production, this would be an API call
-        const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
-        const foundProgram = globalPrograms.find((p: ExtendedProgram) => p.id === programId)
+        const foundProgram = await loadProgramData(programId)
 
         if (!foundProgram) {
           setError("Program not found")
@@ -63,14 +173,16 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
         }
 
         setProgram(foundProgram)
+        console.log("[Program Details] Program loaded:", foundProgram.name)
 
         // Check if user has already joined
         if (data?.type === "customer") {
-          const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${data.publicAddress}`) || "[]")
-          setIsJoined(userPrograms.includes(programId))
+          const joined = await checkUserJoinedProgram(data.publicAddress, programId)
+          setIsJoined(joined)
+          console.log("[Program Details] User joined status:", joined)
         }
       } catch (err) {
-        console.error("Error loading program:", err)
+        console.error("[Program Details] Error loading program:", err)
         setError("Failed to load program details")
       } finally {
         setLoading(false)
@@ -87,14 +199,25 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
       setJoinLoading(true)
       setError(null)
 
-      // Simulate API call
+      console.log("[Join Program] Starting join process for:", program.name)
+
+      // TODO: Replace with BSV transaction to join program
+      // const joinTxId = await bsv_rust::join_program(program.id, walletData.privateKey)
+      // console.log("[Join Program] BSV Transaction ID:", joinTxId)
+
+      // Simulate processing time (remove in production if not needed)
       await new Promise((resolve) => setTimeout(resolve, 1000))
 
+      // TODO: Remove localStorage updates when BSV integration is complete
       // Update program participants
       const globalPrograms = JSON.parse(localStorage.getItem("globalPrograms") || "[]")
       const updatedPrograms = globalPrograms.map((p: ExtendedProgram) => {
         if (p.id === program.id) {
-          return { ...p, participants: [...p.participants, walletData.publicAddress] }
+          const updatedParticipants = [...p.participants]
+          if (!updatedParticipants.includes(walletData.publicAddress)) {
+            updatedParticipants.push(walletData.publicAddress)
+          }
+          return { ...p, participants: updatedParticipants }
         }
         return p
       })
@@ -102,12 +225,25 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
 
       // Add to user's programs
       const userPrograms = JSON.parse(localStorage.getItem(`userPrograms_${walletData.publicAddress}`) || "[]")
-      userPrograms.push(program.id)
-      localStorage.setItem(`userPrograms_${walletData.publicAddress}`, JSON.stringify(userPrograms))
+      if (!userPrograms.includes(program.id)) {
+        userPrograms.push(program.id)
+        localStorage.setItem(`userPrograms_${walletData.publicAddress}`, JSON.stringify(userPrograms))
+      }
 
+      // Update local state
+      setProgram((prev) =>
+        prev
+          ? {
+              ...prev,
+              participants: [...prev.participants, walletData.publicAddress],
+            }
+          : null,
+      )
       setIsJoined(true)
+
+      console.log("[Join Program] ✅ Successfully joined program")
     } catch (err) {
-      console.error("Error joining program:", err)
+      console.error("[Join Program] Error joining program:", err)
       setError("Failed to join program")
     } finally {
       setJoinLoading(false)
@@ -281,7 +417,7 @@ export default function ProgramDetails({ programId }: ProgramDetailsProps) {
               )}
               {walletData?.type === "merchant" && walletData.publicAddress === program.merchant_address && (
                 <Button
-                  className="w-full"
+                  className="w-full bg-transparent"
                   variant="outline"
                   onClick={() => router.push(`/merchant/programs/${program.id}/manage`)}
                 >

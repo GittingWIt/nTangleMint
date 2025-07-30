@@ -44,5 +44,5 @@
     "types/**/*.d.ts",
     "lib/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "packages/bsv-core/src", "packages/bsv-core/pkg"]
 }

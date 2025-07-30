@@ -29,24 +29,48 @@
 //! tx.inputs[0].unlock_script = create_unlock_script(&signature, &public_key);
 //! ```
 use crate::util::{Hash256, Result};
+
+// Conditional imports based on target
+#[cfg(not(target_arch = "wasm32"))]
 use secp256k1::{Secp256k1, Message, SecretKey, ecdsa::{Signature, SerializedSignature}};
+
+#[cfg(target_arch = "wasm32")]
+use k256::{
+    ecdsa::{SigningKey, Signature},
+};
 
 pub mod p2pkh;
 pub mod sighash;
 
 /// Generates a signature for a transaction sighash
+#[cfg(not(target_arch = "wasm32"))]
 pub fn generate_signature(
     private_key: &[u8; 32],
     sighash: &Hash256,
     sighash_type: u8,
 ) -> Result<Vec<u8>> {
     let secp = Secp256k1::signing_only();
-    let message = Message::from_digest(sighash.0);
+    let message = Message::from_slice(&sighash.0)?;
     let secret_key = SecretKey::from_slice(private_key)?;
-    let mut signature: Signature = secp.sign_ecdsa(message, &secret_key); // Fixed: removed & from message
+    let mut signature: Signature = secp.sign_ecdsa(&message, &secret_key);
     signature.normalize_s();
     let sig: SerializedSignature = signature.serialize_der();
     let mut v = sig.to_vec();
+    v.push(sighash_type);
+    Ok(v)
+}
+
+/// Generates a signature for a transaction sighash (WASM version)
+#[cfg(target_arch = "wasm32")]
+pub fn generate_signature(
+    private_key: &[u8; 32],
+    sighash: &Hash256,
+    sighash_type: u8,
+) -> Result<Vec<u8>> {
+    let signing_key = SigningKey::from_slice(private_key)?;
+    use k256::ecdsa::signature::Signer;
+    let signature: Signature = signing_key.sign(&sighash.0);
+    let mut v = signature.to_der().as_bytes().to_vec();
     v.push(sighash_type);
     Ok(v)
 }

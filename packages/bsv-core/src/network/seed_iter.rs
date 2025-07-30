@@ -1,6 +1,11 @@
 #![allow(deprecated)]
 
+// Conditional import - dns_lookup only available on native
+#[cfg(not(target_arch = "wasm32"))]
 use dns_lookup::lookup_host;
+
+// Conditional imports
+#[cfg(not(target_arch = "wasm32"))]
 use log::{error, info};
 use rand::{thread_rng, Rng}; // Added Rng
 use std::net::IpAddr;
@@ -8,10 +13,15 @@ use std::net::IpAddr;
 #[derive(Clone, Debug)]
 pub struct SeedIter<'a> {
     pub port: u16,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     seeds: &'a [String],
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     nodes: Vec<IpAddr>,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     seed_index: usize,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     node_index: usize,
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     random_offset: usize,
 }
 
@@ -33,6 +43,7 @@ impl<'a> SeedIter<'a> {
 impl<'a> Iterator for SeedIter<'a> {
     type Item = (IpAddr, u16);
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if self.seed_index >= self.seeds.len() {
@@ -66,6 +77,12 @@ impl<'a> Iterator for SeedIter<'a> {
             }
             return Some((self.nodes[i], self.port));
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn next(&mut self) -> Option<Self::Item> {
+        // DNS resolution not available in WASM
+        None
     }
 }
 

@@ -1,42 +1,103 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+
+import { useEffect, useState } from "react"
+import { useRouter, usePathname } from "next/navigation"
 
 interface ClientLayoutProps {
-  children: ReactNode
+  children: React.ReactNode
 }
 
-const ClientLayout: React.FC<ClientLayoutProps> = ({ children }) => {
-  const [isClient, setIsClient] = useState(false)
+export default function ClientLayout({ children }: ClientLayoutProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    setIsClient(true)
-  }, [])
+    const checkAuthAndRedirect = () => {
+      try {
+        // Skip auth checks for public routes
+        if (pathname.startsWith("/(public)") || pathname === "/") {
+          setIsLoading(false)
+          return
+        }
 
-  useEffect(() => {
-    // App Router doesn't have router.asPath, so we'll use window.location.pathname
-    if (typeof window !== "undefined") {
-      const currentPath = window.location.pathname
-      localStorage.setItem("lastVisitedPath", currentPath)
+        // Skip auth checks for wallet generation
+        if (pathname === "/wallet-generation") {
+          setIsLoading(false)
+          return
+        }
+
+        // Check for wallet session
+        const sessionData = localStorage.getItem("bsv-wallet-session")
+
+        if (!sessionData) {
+          // No session found, redirect to wallet generation
+          console.log("[ClientLayout] No wallet session found, redirecting to wallet generation")
+          router.push("/wallet-generation")
+          return
+        }
+
+        let session
+        try {
+          session = JSON.parse(sessionData)
+        } catch (error) {
+          console.error("[ClientLayout] Invalid session data, clearing and redirecting")
+          localStorage.removeItem("bsv-wallet-session")
+          router.push("/wallet-generation")
+          return
+        }
+
+        // Validate session structure
+        if (!session.address || !session.type) {
+          console.error("[ClientLayout] Invalid session structure, clearing and redirecting")
+          localStorage.removeItem("bsv-wallet-session")
+          router.push("/wallet-generation")
+          return
+        }
+
+        console.log(`[ClientLayout] Valid ${session.type} session found for: ${session.address}`)
+
+        // Route based on wallet type and current path
+        if (pathname.startsWith("/merchant") || pathname.startsWith("/(protected)/merchant")) {
+          if (session.type !== "merchant") {
+            console.log("[ClientLayout] Non-merchant trying to access merchant area, redirecting to customer")
+            router.push("/customer")
+            return
+          }
+        } else if (pathname.startsWith("/customer") || pathname.startsWith("/(protected)/customer")) {
+          if (session.type !== "customer") {
+            console.log("[ClientLayout] Non-customer trying to access customer area, redirecting to merchant")
+            router.push("/merchant")
+            return
+          }
+        } else if (pathname.startsWith("/(protected)/admin")) {
+          if (session.type !== "admin") {
+            console.log("[ClientLayout] Non-admin trying to access admin area, redirecting based on type")
+            router.push(session.type === "merchant" ? "/merchant" : "/customer")
+            return
+          }
+        }
+
+        setIsLoading(false)
+      } catch (error) {
+        console.error("[ClientLayout] Error in auth check:", error)
+        setIsLoading(false)
+      }
     }
-  }, [])
 
-  useEffect(() => {
-    // On mount, redirect to the last visited path if it exists
-    const lastVisitedPath = localStorage.getItem("lastVisitedPath")
-    if (lastVisitedPath && typeof window !== "undefined" && lastVisitedPath !== window.location.pathname) {
-      router.push(lastVisitedPath)
-    }
-  }, [router])
+    checkAuthAndRedirect()
+  }, [pathname, router])
 
-  if (!isClient) {
-    return <div>Loading...</div>
+  // Show loading spinner while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
   }
 
-  return <div>{children}</div>
+  return <>{children}</>
 }
-
-export default ClientLayout

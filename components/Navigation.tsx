@@ -1,12 +1,29 @@
 "use client"
 
 import { useRouter, usePathname } from "next/navigation"
-import { Menu } from "lucide-react"
+import { Menu, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+interface WalletData {
+  publicAddress: string
+  type: "merchant" | "customer"
+  businessName?: string
+}
 
 function shortenAddress(address: string): string {
   if (!address) return ""
@@ -16,64 +33,85 @@ function shortenAddress(address: string): string {
 export default function Navigation() {
   const router = useRouter()
   const pathname = usePathname()
-  const [walletData, setWalletData] = React.useState<any>(null)
+  const [walletData, setWalletData] = React.useState<WalletData | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
+  const [isLoggingOut, setIsLoggingOut] = React.useState(false)
 
   React.useEffect(() => {
-    const loadWalletData = () => {
+    const loadWalletData = async () => {
       try {
-        // Direct localStorage access - no complex storage systems
-        const walletDataStr = localStorage.getItem("walletData")
-        if (!walletDataStr) {
-          setWalletData(null)
-          setIsLoading(false)
-          return
-        }
+        setIsLoading(true)
+        console.log("[Navigation] Loading wallet data from localStorage...")
 
-        const wallet = JSON.parse(walletDataStr)
-        if (!wallet || !wallet.publicAddress) {
+        // Check localStorage for active session
+        const sessionData = localStorage.getItem("bsv-wallet-session")
+        if (sessionData) {
+          const session = JSON.parse(sessionData)
+          console.log("[Navigation] ✅ Found active wallet session:", session.address)
+          setWalletData({
+            publicAddress: session.address,
+            type: session.type,
+            ...(session.businessName !== undefined ? { businessName: session.businessName } : {}),
+          })
+        } else {
+          console.log("[Navigation] No active wallet session found")
           setWalletData(null)
-          setIsLoading(false)
-          return
         }
-
-        setWalletData(wallet)
-        setIsLoading(false)
       } catch (err) {
-        console.error("Failed to load wallet data:", err)
+        console.error("[Navigation] Failed to load wallet from localStorage:", err)
         setWalletData(null)
+      } finally {
         setIsLoading(false)
       }
     }
 
     loadWalletData()
 
-    // Listen for wallet updates
+    // Listen for wallet updates (from other components)
     const handleWalletUpdate = () => loadWalletData()
-    window.addEventListener("walletUpdated", handleWalletUpdate)
-    window.addEventListener("walletCleared", handleWalletUpdate)
+    window.addEventListener("bsvWalletUpdated", handleWalletUpdate)
+    window.addEventListener("bsvWalletCleared", handleWalletUpdate)
 
     return () => {
-      window.removeEventListener("walletUpdated", handleWalletUpdate)
-      window.removeEventListener("walletCleared", handleWalletUpdate)
+      window.removeEventListener("bsvWalletUpdated", handleWalletUpdate)
+      window.removeEventListener("bsvWalletCleared", handleWalletUpdate)
     }
   }, [])
 
-  const handleLogout = () => {
+  // Redirect away from wallet generation if already logged in
+  React.useEffect(() => {
+    if (!isLoading && walletData && pathname === "/wallet-generation") {
+      console.log("[Navigation] User already has wallet, redirecting from wallet generation page")
+      router.push(getDashboardRoute())
+    }
+  }, [isLoading, walletData, pathname, router])
+
+  const handleLogout = async () => {
     try {
-      // Simple logout - just clear localStorage
-      localStorage.removeItem("walletData")
+      setIsLoggingOut(true)
+      console.log("[Navigation] Logging out...")
+
+      // Clear localStorage
+      localStorage.removeItem("bsv-wallet-session")
+      localStorage.removeItem("bsv-wallet-data")
+
+      // Add a small delay to ensure session is cleared
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Clear local state
       setWalletData(null)
 
-      // Trigger wallet cleared event
-      window.dispatchEvent(new Event("walletCleared"))
+      // Trigger wallet cleared event for other components
+      window.dispatchEvent(new Event("bsvWalletCleared"))
+
+      console.log("[Navigation] Successfully logged out")
 
       // Navigate to home
       router.push("/")
     } catch (err) {
-      console.error("Logout error:", err)
+      console.error("[Navigation] Logout error:", err)
+    } finally {
+      setIsLoggingOut(false)
     }
   }
 
@@ -81,15 +119,26 @@ export default function Navigation() {
     router.push("/wallet-generation")
   }
 
-  // Simple role-based routing
+  // Role-based routing
   const getDashboardRoute = () => {
     if (!walletData) return "/wallet-generation"
-    return walletData.type === "merchant" ? "/merchant" : "/dashboard"
+    return walletData.type === "merchant" ? "/merchant" : "/customer"
   }
 
   const getDashboardLabel = () => {
     if (!walletData) return "Dashboard"
     return walletData.type === "merchant" ? "Merchant Dashboard" : "Dashboard"
+  }
+
+  const handleCopyAddress = async () => {
+    if (walletData?.publicAddress) {
+      try {
+        await navigator.clipboard.writeText(walletData.publicAddress)
+        console.log("[Navigation] Address copied to clipboard")
+      } catch (err) {
+        console.error("[Navigation] Failed to copy address:", err)
+      }
+    }
   }
 
   return (
@@ -113,9 +162,7 @@ export default function Navigation() {
               href={getDashboardRoute()}
               className={cn(
                 "text-sm font-medium transition-colors hover:text-gray-900",
-                pathname.includes("/dashboard") || pathname.includes("/merchant") || pathname.includes("/user")
-                  ? "text-gray-900"
-                  : "text-gray-600",
+                pathname.includes("/merchant") || pathname.includes("/customer") ? "text-gray-900" : "text-gray-600",
               )}
             >
               {getDashboardLabel()}
@@ -132,22 +179,44 @@ export default function Navigation() {
                     <Button variant="ghost" className="font-mono">
                       <Menu className="mr-2 h-4 w-4" />
                       {shortenAddress(walletData.publicAddress)}
-                      {walletData.type && (
-                        <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded capitalize">{walletData.type}</span>
-                      )}
+                      <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded capitalize">{walletData.type}</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuItem asChild>
-                      <button className="w-full" onClick={handleLogout}>
-                        <span>Logout</span>
+                      <button className="w-full" onClick={handleCopyAddress}>
+                        <span>Copy Address</span>
                       </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="w-full flex items-center">
+                            <LogOut className="mr-2 h-4 w-4" />
+                            <span>Logout</span>
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to logout? This will disconnect your BSV wallet.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleLogout} disabled={isLoggingOut}>
+                              {isLoggingOut ? "Logging out..." : "Logout"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
                 <Button variant="outline" onClick={handleCreateWallet}>
-                  Create/Restore Wallet
+                  Connect BSV Wallet
                 </Button>
               )}
             </>

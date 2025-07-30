@@ -8,26 +8,46 @@ keywords = ["bitcoin", "sv", "cash", "crypto"]
 license = "MIT"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
-base58 = "0.2.0"
-byteorder = "1.5.0"
-dns-lookup = "2.0.4"
-hex = "0.4.3"
-linked-hash-map = "0.5.6"
-log = { version = "0.4.22", features = ["max_level_trace", "release_max_level_warn"] }
-murmur3 = "0.5.2"
-num-bigint = "0.4.6"
-num-traits = "0.2.19"
-rand = "0.9.1"
-ring = "0.17.14"
-ripemd = "0.1.3"
-secp256k1 = { version = "0.31.0", features = ["rand", "global-context"] }
-secp256k1-sys = "0.11.0"
-snowflake = "1.3.0"
+byteorder = "1.5"
+hex = "0.4"
+linked-hash-map = "0.5"
+murmur3 = "0.5"
+rand = "0.8"
+ring = "0.16"
+snowflake = "1.3"
+base58 = "0.2"
+num-bigint = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+ripemd = "0.1"
+log = "0.4"
 
-[dev-dependencies]
-pretty_assertions = "1.4.0"
+# Optional dependencies for feature flags
+k256 = { version = "0.13", features = ["ecdsa", "std"], optional = true }
 
+# Native-only dependencies (secp256k1 for full performance)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+secp256k1 = { version = "0.27", features = ["alloc", "rand", "recovery", "global-context"] }
+dns-lookup = "2.0"
+
+# WASM-specific dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = "0.3"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
+k256 = { version = "0.13", features = ["ecdsa", "std"] }
+
+[features]
+default = []
+wasm = ["k256"]
+
+# Profile optimizations for WASM
 [profile.release]
 opt-level = "s"
 lto = true

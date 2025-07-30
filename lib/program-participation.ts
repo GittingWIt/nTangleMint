@@ -1,253 +1,529 @@
-import { debug, debugError } from "./debug"
-import { getWalletData, getPrograms, updateProgram, getProgram } from "./storage-compat"
+"use server"
+
+import { debugLog } from "./debug"
 
 /**
- * Manages user participation in programs with persistent storage
+ * BSV Blockchain Program Participation Management
+ * Handles user participation in loyalty programs via BSV transactions
  */
-export class ProgramParticipation {
-  private static readonly PARTICIPATION_KEY = "user_program_participation"
 
-  /**
-   * Get user's participation data
-   */
-  static getUserParticipation(userAddress: string): {
-    joinedPrograms: string[]
-    joinDates: Record<string, string>
-    progress: Record<string, any>
-  } {
-    try {
-      const key = `${this.PARTICIPATION_KEY}_${userAddress}`
-      const data = localStorage.getItem(key)
-
-      if (!data) {
-        return {
-          joinedPrograms: [],
-          joinDates: {},
-          progress: {},
-        }
-      }
-
-      const participation = JSON.parse(data)
-      debug(`Retrieved participation data for ${userAddress}:`, participation)
-
-      return {
-        joinedPrograms: participation.joinedPrograms || [],
-        joinDates: participation.joinDates || {},
-        progress: participation.progress || {},
-      }
-    } catch (error) {
-      console.error("Error getting user participation:", error)
-      return {
-        joinedPrograms: [],
-        joinDates: {},
-        progress: {},
-      }
-    }
+export interface JoinedProgram {
+  id: string
+  name: string
+  description: string
+  type: "punch-card" | "coupon-book"
+  merchantAddress: string
+  participants: string[]
+  metadata?: {
+    requiredPunches?: number
+    totalCoupons?: number
+    rewardDescription?: string
+    discountAmount?: string
+    merchantName?: string
+    products?: Array<{ name: string }>
   }
-
-  /**
-   * Save user's participation data
-   */
-  static saveUserParticipation(
-    userAddress: string,
-    participation: {
-      joinedPrograms: string[]
-      joinDates: Record<string, string>
-      progress: Record<string, any>
-    },
-  ): void {
-    try {
-      const key = `${this.PARTICIPATION_KEY}_${userAddress}`
-      localStorage.setItem(key, JSON.stringify(participation))
-      debug(`Saved participation data for ${userAddress}:`, participation)
-    } catch (error) {
-      console.error("Error saving user participation:", error)
-    }
+  joinedAt: string
+  progress: {
+    current: number
+    required: number
+    percentage: number
   }
+}
 
-  /**
-   * Join a program
-   */
-  static joinProgram(programId: string): { success: boolean; message: string } {
-    try {
-      const wallet = getWalletData()
-      if (!wallet) {
-        debug("No wallet data found when joining program")
-        return { success: false, message: "No wallet found" }
-      }
-
-      const userAddress = wallet.publicAddress
-      const program = getProgram(programId)
-
-      if (!program) {
-        debug(`Program ${programId} not found when joining`)
-        return { success: false, message: "Program not found" }
-      }
-
-      // Check if already joined
-      if (this.hasJoinedProgram(programId)) {
-        debug(`User ${userAddress.substring(0, 8)}... already joined program ${programId}`)
-        return { success: false, message: "Already joined this program" }
-      }
-
-      // Initialize participants array if it doesn't exist
-      const participants = Array.isArray(program.participants) ? [...program.participants] : []
-
-      // Add user to participants
-      participants.push(userAddress)
-
-      // Update the program
-      updateProgram(programId, { participants })
-
-      debug(`User ${userAddress.substring(0, 8)}... successfully joined program ${programId}`)
-
-      // Dispatch custom event for program joined
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("programJoined", {
-            detail: { programId, userAddress },
-          }),
-        )
-      }
-
-      return { success: true, message: "Successfully joined program" }
-    } catch (error) {
-      debugError("Error joining program:", error)
-      return { success: false, message: "Error joining program" }
+export interface CustomerTransaction {
+  id: string
+  programId: string
+  type: "join" | "punch" | "redeem" | "leave"
+  timestamp: string
+  details: {
+    programName: string
+    merchantAddress: string
+    progress?: {
+      current: number
+      required: number
     }
+    reward?: string
   }
+}
 
-  /**
-   * Leave a program
-   */
-  static leaveProgram(programId: string): { success: boolean; message: string } {
-    try {
-      const wallet = getWalletData()
-      if (!wallet) {
-        debug("No wallet data found when leaving program")
-        return { success: false, message: "No wallet found" }
-      }
+export interface ParticipationResult {
+  success: boolean
+  message: string
+  transactionId?: string
+  programId?: string
+  userAddress?: string
+}
 
-      const userAddress = wallet.publicAddress
-      const program = getProgram(programId)
+export interface ProgressUpdate {
+  programId: string
+  userAddress: string
+  updateType: "punch" | "coupon_use" | "points_earn" | "cashback_earn"
+  amount?: number
+  metadata?: Record<string, any>
+}
 
-      if (!program) {
-        debug(`Program ${programId} not found when leaving`)
-        return { success: false, message: "Program not found" }
-      }
+export interface RedemptionRequest {
+  programId: string
+  userAddress: string
+  rewardType: "punch_card_reward" | "coupon_discount" | "points_reward" | "cashback_payout"
+  amount?: number
+  merchantSignature?: string
+}
 
-      // Check if program has participants array
-      if (!program.participants || !Array.isArray(program.participants)) {
-        debug(`Program ${programId} has no participants array`)
-        return { success: false, message: "Not joined this program" }
-      }
+// Types for program participation
+export interface ParticipationData {
+  programId: string
+  userAddress: string
+  joinedAt: string
+  progress: {
+    currentPoints: number
+    totalEarned: number
+    rewardsRedeemed: number
+  }
+  status: "active" | "inactive" | "completed"
+  lastActivity: string
+}
 
-      // Check if user is a participant
-      if (!program.participants.includes(userAddress)) {
-        debug(`User ${userAddress.substring(0, 8)}... not in program ${programId} participants`)
-        return { success: false, message: "Not joined this program" }
-      }
+export interface ParticipationEligibility {
+  isEligible: boolean
+  reason?: string
+}
 
-      // Remove user from participants
-      const participants = program.participants.filter((addr: string) => addr !== userAddress)
+export interface ParticipationStats {
+  totalParticipants: number
+  activeParticipants: number
+  completedPrograms: number
+  averageProgress: number
+}
 
-      // Update the program
-      updateProgram(programId, { participants })
+/**
+ * Join a program - Creates BSV transaction
+ */
+export async function joinProgram(
+  programId: string,
+  userAddress: string,
+  _userPrivateKey: string,
+): Promise<ParticipationResult> {
+  try {
+    debugLog("program-participation", `User ${userAddress} joining program ${programId}`)
 
-      debug(`User ${userAddress.substring(0, 8)}... successfully left program ${programId}`)
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::join_program(programId, userAddress, userPrivateKey)
 
-      // Dispatch custom event for program left
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("programLeft", {
-            detail: { programId, userAddress },
-          }),
-        )
-      }
+    // Simulate BSV blockchain transaction
+    await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      return { success: true, message: "Successfully left program" }
-    } catch (error) {
-      debugError("Error leaving program:", error)
-      return { success: false, message: "Error leaving program" }
+    const transactionId = `bsv_join_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    debugLog("program-participation", `Successfully joined program: ${transactionId}`)
+
+    return {
+      success: true,
+      message: "Successfully joined loyalty program",
+      transactionId,
+      programId,
+      userAddress,
     }
-  }
-
-  /**
-   * Check if user has joined a program
-   */
-  static hasJoinedProgram(programId: string): boolean {
-    try {
-      const wallet = getWalletData()
-      if (!wallet) return false
-
-      const userAddress = wallet.publicAddress
-      const program = getProgram(programId)
-
-      if (!program) return false
-
-      const hasJoined =
-        program.participants && Array.isArray(program.participants) && program.participants.includes(userAddress)
-
-      debug(`User ${userAddress.substring(0, 8)}... has joined program ${programId}: ${hasJoined}`)
-      return hasJoined
-    } catch (error) {
-      console.error("Error checking program participation:", error)
-      return false
-    }
-  }
-
-  /**
-   * Get user's joined programs with details
-   */
-  static getUserJoinedPrograms() {
-    try {
-      const wallet = getWalletData()
-      if (!wallet) {
-        debug("No wallet data found when getting joined programs")
-        return []
-      }
-
-      const userAddress = wallet.publicAddress
-      debug(`Getting joined programs for user: ${userAddress.substring(0, 8)}...`)
-
-      const allPrograms = getPrograms()
-
-      // Filter programs where user is a participant
-      const joinedPrograms = allPrograms.filter(
-        (program: any) =>
-          program.participants && Array.isArray(program.participants) && program.participants.includes(userAddress),
-      )
-
-      debug(`Found ${joinedPrograms.length} joined programs for user ${userAddress.substring(0, 8)}...`)
-      return joinedPrograms
-    } catch (error) {
-      console.error("Error getting user joined programs:", error)
-      return []
-    }
-  }
-
-  /**
-   * Update user progress in a program
-   */
-  static updateProgress(programId: string, progress: any): void {
-    try {
-      const wallet = getWalletData()
-      if (!wallet) return
-
-      const participation = this.getUserParticipation(wallet.publicAddress)
-      participation.progress[programId] = progress
-
-      this.saveUserParticipation(wallet.publicAddress, participation)
-      debug(`Updated progress for program ${programId}:`, progress)
-    } catch (error) {
-      console.error("Error updating progress:", error)
+  } catch (error) {
+    debugLog("program-participation", `Error joining program: ${error}`, undefined, "error")
+    return {
+      success: false,
+      message: "Failed to join program",
     }
   }
 }
 
-// Export convenience functions
-export const joinProgram = ProgramParticipation.joinProgram.bind(ProgramParticipation)
-export const leaveProgram = ProgramParticipation.leaveProgram.bind(ProgramParticipation)
-export const hasJoinedProgram = ProgramParticipation.hasJoinedProgram.bind(ProgramParticipation)
-export const getUserJoinedPrograms = ProgramParticipation.getUserJoinedPrograms.bind(ProgramParticipation)
-export const updateProgress = ProgramParticipation.updateProgress.bind(ProgramParticipation)
+/**
+ * Leave a program - Creates BSV transaction
+ */
+export async function leaveProgram(
+  programId: string,
+  userAddress: string,
+  _userPrivateKey: string,
+): Promise<ParticipationResult> {
+  try {
+    debugLog("program-participation", `User ${userAddress} leaving program ${programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::leave_program(programId, userAddress, userPrivateKey)
+
+    // Simulate BSV blockchain transaction
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+
+    const transactionId = `bsv_leave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    debugLog("program-participation", `Successfully left program: ${transactionId}`)
+
+    return {
+      success: true,
+      message: "Successfully left loyalty program",
+      transactionId,
+      programId,
+      userAddress,
+    }
+  } catch (error) {
+    debugLog("program-participation", `Error leaving program: ${error}`, undefined, "error")
+    return {
+      success: false,
+      message: "Failed to leave program",
+    }
+  }
+}
+
+/**
+ * Check if user has joined a program - Queries BSV blockchain
+ */
+export async function hasJoinedProgram(_programId: string): Promise<boolean> {
+  try {
+    // TODO: Replace with BSV Rust library call
+    // const program = await bsv_rust::query_program(programId)
+    // if (!program) return false
+    // const wallet = await bsv_rust::get_active_wallet()
+    // return program.participants.includes(wallet.publicAddress)
+
+    // Simulate BSV blockchain query - always return false for now
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    debugLog("program-participation", `Checking program participation - returning false (development mode)`)
+    return false
+  } catch (error) {
+    console.error("Error checking program participation:", error)
+    return false
+  }
+}
+
+/**
+ * Get customer's joined programs from BSV blockchain
+ */
+export async function getUserJoinedPrograms(userAddress: string): Promise<JoinedProgram[]> {
+  try {
+    debugLog("program-participation", `Loading joined programs for customer: ${userAddress}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_customer_joined_programs(userAddress)
+
+    // Simulate BSV blockchain query
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
+    // Return empty array initially - programs will show after customer joins them
+    const joinedPrograms: JoinedProgram[] = []
+
+    debugLog("program-participation", `Customer has joined ${joinedPrograms.length} programs`)
+
+    return joinedPrograms
+  } catch (error) {
+    debugLog("program-participation", `Error loading joined programs: ${error}`)
+    return []
+  }
+}
+
+/**
+ * Get customer's program transaction history from BSV blockchain
+ */
+export async function getUserProgramTransactions(userAddress: string): Promise<CustomerTransaction[]> {
+  try {
+    debugLog("program-participation", `Loading transaction history for customer: ${userAddress}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_customer_program_transactions(userAddress)
+
+    // Simulate BSV blockchain query
+    await new Promise((resolve) => setTimeout(resolve, 600))
+
+    // Return empty array initially - transactions will show after customer activity
+    const transactions: CustomerTransaction[] = []
+
+    debugLog("program-participation", `Customer has ${transactions.length} program transactions`)
+
+    return transactions
+  } catch (error) {
+    debugLog("program-participation", `Error loading transaction history: ${error}`)
+    return []
+  }
+}
+
+/**
+ * Add progress to a punch card program
+ */
+export async function updateProgress(
+  update: ProgressUpdate,
+  _userPrivateKey: string,
+  _merchantPrivateKey?: string,
+): Promise<ParticipationResult> {
+  try {
+    debugLog("program-participation", `Updating progress for program ${update.programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::update_program_progress(update, userPrivateKey, merchantPrivateKey)
+
+    // Simulate BSV transaction creation
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
+    const transactionId = `bsv_progress_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    debugLog("program-participation", `Progress updated: ${transactionId}`)
+
+    return {
+      success: true,
+      message: `Progress updated: ${update.updateType}`,
+      transactionId,
+      programId: update.programId,
+      userAddress: update.userAddress,
+    }
+  } catch (error) {
+    debugLog("program-participation", `Error updating progress: ${error}`, undefined, "error")
+    return {
+      success: false,
+      message: "Failed to update progress",
+    }
+  }
+}
+
+/**
+ * Get user's current progress in a program from BSV blockchain
+ */
+export async function getUserProgress(
+  programId: string,
+  userAddress: string,
+): Promise<{
+  currentPunches?: number
+  couponsUsed?: number
+  pointsEarned?: number
+  cashbackEarned?: number
+  isEligibleForReward: boolean
+  nextRewardAt?: number
+  transactionHistory: string[]
+}> {
+  try {
+    debugLog("program-participation", `Getting progress for user ${userAddress} in program ${programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_user_progress(programId, userAddress)
+
+    // Simulate BSV blockchain query
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    // TODO: Query BSV blockchain for user's program transactions
+    // TODO: Calculate current progress from transaction history
+    // TODO: Determine reward eligibility
+    // TODO: Return formatted progress data
+
+    const progress = {
+      currentPunches: 0,
+      couponsUsed: 0,
+      pointsEarned: 0,
+      cashbackEarned: 0,
+      isEligibleForReward: false,
+      transactionHistory: [],
+    }
+
+    debugLog("program-participation", `User progress: ${JSON.stringify(progress)}`)
+    return progress
+  } catch (error) {
+    debugLog("program-participation", `Error getting user progress: ${error}`, undefined, "error")
+    return {
+      currentPunches: 0,
+      couponsUsed: 0,
+      pointsEarned: 0,
+      cashbackEarned: 0,
+      isEligibleForReward: false,
+      transactionHistory: [],
+    }
+  }
+}
+
+/**
+ * Validate program participation eligibility
+ */
+export async function validateParticipationEligibility(
+  programId: string,
+  _userAddress: string,
+): Promise<{
+  isEligible: boolean
+  reason?: string
+}> {
+  try {
+    debugLog("program-participation", `Validating eligibility for program ${programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::validate_participation_eligibility(programId, userAddress)
+
+    // Simulate BSV blockchain validation
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    // TODO: Query program rules from BSV blockchain
+    // TODO: Check user's current participation status
+    // TODO: Validate against program requirements
+    // TODO: Return eligibility status and requirements
+
+    const validation = {
+      isEligible: true,
+      requirements: [],
+    }
+
+    debugLog("program-participation", `Eligibility validation: ${JSON.stringify(validation)}`)
+    return validation
+  } catch (error) {
+    debugLog("program-participation", `Error validating eligibility: ${error}`, undefined, "error")
+    return {
+      isEligible: false,
+      reason: "Validation failed",
+    }
+  }
+}
+
+/**
+ * Get user's participation data for a specific program
+ */
+export async function getUserParticipation(
+  _programId: string,
+  _userAddress: string,
+): Promise<ParticipationData | null> {
+  try {
+    debugLog("program-participation", `Getting participation data for program: ${_programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_user_participation(programId, userAddress)
+
+    // Mock implementation for development
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    const mockData: ParticipationData = {
+      programId: _programId,
+      userAddress: _userAddress,
+      joinedAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+      progress: {
+        currentPoints: Math.floor(Math.random() * 100),
+        totalEarned: Math.floor(Math.random() * 500),
+        rewardsRedeemed: Math.floor(Math.random() * 10),
+      },
+      status: Math.random() > 0.2 ? "active" : "inactive",
+      lastActivity: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+    }
+
+    debugLog("program-participation", `✅ Retrieved participation data`)
+
+    return mockData
+  } catch (error) {
+    debugLog("program-participation", `❌ Error getting participation data: ${error}`)
+    return null
+  }
+}
+
+/**
+ * Get all programs a user is participating in
+ */
+export async function getUserPrograms(_userAddress: string): Promise<ParticipationData[]> {
+  try {
+    debugLog("program-participation", `Getting all programs for user: ${_userAddress}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_user_programs(userAddress)
+
+    // Mock implementation for development
+    await new Promise((resolve) => setTimeout(resolve, 500))
+
+    const mockPrograms: ParticipationData[] = [
+      {
+        programId: "prog_1",
+        userAddress: _userAddress,
+        joinedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        progress: {
+          currentPoints: 45,
+          totalEarned: 120,
+          rewardsRedeemed: 2,
+        },
+        status: "active",
+        lastActivity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        programId: "prog_2",
+        userAddress: _userAddress,
+        joinedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+        progress: {
+          currentPoints: 78,
+          totalEarned: 200,
+          rewardsRedeemed: 1,
+        },
+        status: "active",
+        lastActivity: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ]
+
+    debugLog("program-participation", `✅ Retrieved ${mockPrograms.length} user programs`)
+
+    return mockPrograms
+  } catch (error) {
+    debugLog("program-participation", `❌ Error getting user programs: ${error}`)
+    return []
+  }
+}
+
+/**
+ * Get participation statistics for a program
+ */
+export async function getProgramStats(_programId: string): Promise<ParticipationStats> {
+  try {
+    debugLog("program-participation", `Getting stats for program: ${_programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::get_program_stats(programId)
+
+    // Mock implementation for development
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const mockStats: ParticipationStats = {
+      totalParticipants: Math.floor(Math.random() * 500) + 50,
+      activeParticipants: Math.floor(Math.random() * 300) + 20,
+      completedPrograms: Math.floor(Math.random() * 50),
+      averageProgress: Math.random() * 100,
+    }
+
+    debugLog("program-participation", `✅ Retrieved program stats`)
+
+    return mockStats
+  } catch (error) {
+    debugLog("program-participation", `❌ Error getting program stats: ${error}`)
+    return {
+      totalParticipants: 0,
+      activeParticipants: 0,
+      completedPrograms: 0,
+      averageProgress: 0,
+    }
+  }
+}
+
+/**
+ * Redeem reward from a completed program
+ */
+export async function redeemReward(
+  _programId: string,
+  _userAddress: string,
+  _userPrivateKey: string,
+  _rewardId: string,
+): Promise<{ success: boolean; transactionId?: string; error?: string }> {
+  try {
+    debugLog("program-participation", `Redeeming reward: ${_rewardId} from program: ${_programId}`)
+
+    // TODO: Replace with BSV Rust library call
+    // return bsv_rust::redeem_program_reward(programId, userAddress, userPrivateKey, rewardId)
+
+    // Mock implementation for development
+    await new Promise((resolve) => setTimeout(resolve, 800))
+
+    const mockTransactionId = `tx_redeem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+    debugLog("program-participation", `✅ Successfully redeemed reward: ${mockTransactionId}`)
+
+    return {
+      success: true,
+      transactionId: mockTransactionId,
+    }
+  } catch (error) {
+    debugLog("program-participation", `❌ Error redeeming reward: ${error}`)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    }
+  }
+}

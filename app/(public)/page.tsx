@@ -1,522 +1,362 @@
 "use client"
-
-import { useEffect, useState, useCallback } from "react"
-import Link from "next/link"
-import type { WalletData, Program } from "@/types"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import {
-  Users,
-  ShoppingBag,
-  Trophy,
-  Gift,
-  Store,
-  Ticket,
-  ArrowRight,
-  Calendar,
-  Tag,
-  Coffee,
-  Search,
-} from "lucide-react"
+import { Search, Users, Gift, CreditCard, Star, MapPin, Calendar, ArrowRight } from "lucide-react"
+import { loadPublicPrograms } from "@/lib/program-loader"
+import type { MerchantProgram } from "@/lib/program-loader"
 
-// Simplified imports
-import { debug } from "@/lib/debug"
-
-// Simple loading component
-function LoadingSpinner() {
-  return (
-    <div className="flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-    </div>
-  )
+interface WalletData {
+  publicAddress: string
+  type: string
+  privateKey?: string
+  mnemonic?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
-// Enhanced program card component
-function EnhancedProgramCard({ program, onInteract, hasJoined, walletData }: any) {
-  console.log("🔥 EnhancedProgramCard rendering:", program.name)
-  console.log("🔥 Program metadata:", program.metadata)
+type PublicHomePageProps = {}
 
-  // Check if program is expired
-  const checkExpiration = () => {
-    const expirationDate = program.metadata?.expirationDate || program.expirationDate
-    if (!expirationDate) return false
-
-    const expDate = new Date(expirationDate)
-    const today = new Date()
-
-    console.log("🔥 Checking expiration for:", program.name)
-    console.log("🔥 Expiration date:", expirationDate, "->", expDate)
-    console.log("🔥 Today:", today)
-    console.log("🔥 Is expired?", today > expDate)
-
-    return today > expDate
-  }
-
-  const isExpired = checkExpiration()
-
-  // Calculate days left if expiration date exists
-  const calculateDaysLeft = () => {
-    const expirationDate = program.metadata?.expirationDate || program.expirationDate
-    if (!expirationDate) return null
-
-    const expDate = new Date(expirationDate)
-    const today = new Date()
-    const diffTime = expDate.getTime() - today.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-    return diffDays
-  }
-
-  const daysLeft = calculateDaysLeft()
-
-  // Determine card color based on program type and expiration
-  const getCardColorClass = () => {
-    if (isExpired) return "bg-red-50 border-red-200"
-    return program.type === "coupon-book" ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"
-  }
-
-  // Determine icon based on program type
-  const ProgramIcon = program.type === "coupon-book" ? Tag : Coffee
-
-  // Replace the isMerchant prop usage with:
-  const isMerchantAddress = walletData?.publicAddress === "19jXXicm7YynAH73xcau38pkSQKjZQer"
-
-  // And update the button text logic:
-  const buttonText = isMerchantAddress
-    ? program.merchantAddress === walletData.publicAddress
-      ? "Manage Program"
-      : "View Details"
-    : hasJoined
-      ? "Joined"
-      : isExpired
-        ? "Expired"
-        : "Join Program"
-
-  // Format expiration date display
-  const formatExpirationDisplay = () => {
-    const expirationDate = program.metadata?.expirationDate || program.expirationDate
-    if (!expirationDate) return null
-
-    const expDate = new Date(expirationDate)
-    const formattedDate = expDate.toLocaleDateString()
-
-    if (daysLeft === null) return `Expires: ${formattedDate}`
-
-    if (daysLeft < 0) {
-      return `Expired: ${formattedDate} (${Math.abs(daysLeft)} days ago)`
-    } else if (daysLeft === 0) {
-      return `Expires: ${formattedDate} (today)`
-    } else {
-      return `Expires: ${formattedDate} (${daysLeft} days left)`
-    }
-  }
-
-  return (
-    <div className={`rounded-lg border p-0 overflow-hidden ${getCardColorClass()}`}>
-      <div className="p-4">
-        <div className="flex justify-between items-start mb-1">
-          <div className="flex items-center gap-2">
-            <ProgramIcon
-              className={
-                isExpired ? "text-red-600" : program.type === "coupon-book" ? "text-green-600" : "text-amber-600"
-              }
-              size={20}
-            />
-            <h3 className="text-lg font-semibold">{program.name}</h3>
-          </div>
-          <Badge
-            variant="outline"
-            className={
-              isExpired ? "bg-red-100 text-red-800 hover:bg-red-100" : "bg-green-100 text-green-800 hover:bg-green-100"
-            }
-          >
-            {isExpired ? "Expired" : "Active"}
-          </Badge>
-        </div>
-        <p className="text-sm text-gray-600 mb-3">{program.description}</p>
-
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            <Store size={16} className="text-gray-500" />
-            <span>Store: {program.merchantName || "Unknown Merchant"}</span>
-          </div>
-
-          {(program.metadata?.expirationDate || program.expirationDate) && (
-            <div className="flex items-center gap-2">
-              <Calendar size={16} className="text-gray-500" />
-              <span className={isExpired ? "text-red-600" : ""}>{formatExpirationDisplay()}</span>
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-gray-500" />
-            <span>{program.participants?.length || 0} participants</span>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className={isExpired ? "bg-red-100" : program.type === "coupon-book" ? "bg-green-100" : "bg-amber-100"}
-        style={{ padding: "0.75rem 1rem" }}
-      >
-        <div className="flex items-center gap-2 mb-2">
-          {program.type === "coupon-book" ? (
-            <>
-              <Tag size={16} className={isExpired ? "text-red-700" : "text-green-700"} />
-              <span className={`font-medium ${isExpired ? "text-red-800" : "text-green-800"}`}>Discount Program</span>
-              <span className={`ml-auto font-medium ${isExpired ? "text-red-800" : "text-green-800"}`}>
-                {program.metadata?.discountAmount}% off
-              </span>
-            </>
-          ) : (
-            <>
-              <Coffee size={16} className={isExpired ? "text-red-700" : "text-amber-700"} />
-              <span className={`font-medium ${isExpired ? "text-red-800" : "text-amber-800"}`}>Punch Card Program</span>
-              <span className={`ml-auto font-medium ${isExpired ? "text-red-800" : "text-amber-800"}`}>
-                {program.metadata?.requiredPunches || 5} punches
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="space-y-1 text-sm">
-          {program.type === "coupon-book" ? (
-            <>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isExpired ? "bg-red-500" : "bg-green-500"}`}></div>
-                <span>Product: {program.metadata?.products?.[0]?.name || "Product"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isExpired ? "bg-red-500" : "bg-green-500"}`}></div>
-                <span>Usage: No redemptions yet</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isExpired ? "bg-red-500" : "bg-amber-500"}`}></div>
-                <span>Reward: {program.metadata?.reward || "Reward"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isExpired ? "bg-red-500" : "bg-amber-500"}`}></div>
-                <span>Completion Rate: 0%</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="p-3 bg-white flex justify-end">
-        <Button
-          onClick={() => onInteract(program)}
-          disabled={(!isMerchantAddress && hasJoined) || isExpired}
-          variant={isMerchantAddress ? "outline" : "default"}
-          size="sm"
-          className={isExpired ? "opacity-50 cursor-not-allowed" : ""}
-        >
-          {buttonText}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-export default function Home() {
-  const [walletData, setWalletData] = useState<WalletData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [programs, setPrograms] = useState<any[]>([])
+export default function PublicHomePage({}: PublicHomePageProps) {
+  const [_walletData, setWalletData] = useState<WalletData | null>(null)
+  const [programs, setPrograms] = useState<MerchantProgram[]>([])
+  const [filteredPrograms, setFilteredPrograms] = useState<MerchantProgram[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [activeFilter, setActiveFilter] = useState("all")
+  const [isLoading, setIsLoading] = useState(true)
 
-  console.log("🔥 Home component rendering")
-
-  // Load wallet data
+  // Load wallet data from localStorage
   useEffect(() => {
-    try {
-      const walletStr = localStorage.getItem("walletData")
-      const data = walletStr ? JSON.parse(walletStr) : null
-      setWalletData(data)
-    } catch (error) {
-      console.error("Error loading wallet data:", error)
-    }
-  }, [])
+    const loadWalletData = () => {
+      setWalletData(null)
+      return
 
-  // Load programs
-  useEffect(() => {
-    try {
-      const programsStr = localStorage.getItem("programs")
-      const loadedPrograms = programsStr ? JSON.parse(programsStr) : []
-      console.log("🔥 Loaded programs:", loadedPrograms)
-      setPrograms(loadedPrograms)
-      debug(`Loaded ${loadedPrograms.length} programs`)
-    } catch (error) {
-      console.error("Error loading programs:", error)
-      setPrograms([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+      // TODO: In production, get wallet data from BSV session/authentication
+      // For now, check localStorage locations
 
-  // Program interaction function
-  const handleProgramInteraction = useCallback(
-    (program: any) => {
-      if (!walletData?.publicAddress) {
-        // Redirect to wallet creation
-        window.location.href = "/wallet-generation"
-        return
-      }
-
-      // If user is a merchant, navigate to program details
-      if (walletData.publicAddress === "19jXXicm7YynAH73xcau38pkSQKjZQer") {
-        // This is the known merchant address
-        if (program.merchantAddress === walletData.publicAddress) {
-          window.location.href = `/merchant/programs/${program.id}`
-        } else {
-          window.location.href = `/merchant/programs/${program.id}`
-        }
-        return
-      }
-
-      // For all other addresses (customers), handle joining the program
-      try {
-        console.log("🔄 Starting program join process...")
-        console.log("📋 Current program participants:", program.participants)
-
-        // Ensure participants is an array
-        if (!Array.isArray(program.participants)) {
-          program.participants = []
-          console.log("🔧 Initialized participants array")
-        }
-
-        // Check if user is already a participant
-        if (program.participants.includes(walletData.publicAddress)) {
-          alert(`You're already a member of ${program.name}!`)
+      // First check bsv-wallet-session
+      const walletStr = localStorage.getItem("bsv-wallet-session")
+      if (walletStr) {
+        try {
+          const data = JSON.parse(walletStr!)
+          setWalletData({
+            publicAddress: data.address || data.publicAddress,
+            type: data.type,
+            privateKey: data.privateKey,
+            mnemonic: data.mnemonic,
+            createdAt: data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt || new Date().toISOString(),
+          })
+          console.log("🔥 Wallet data loaded from bsv-wallet-session:", data)
           return
+        } catch (error) {
+          console.error("Error parsing wallet data from bsv-wallet-session:", error)
         }
+      }
 
-        // Add user to program participants
-        const updatedParticipants = [...program.participants, walletData.publicAddress]
-        const updatedProgram = { ...program, participants: updatedParticipants }
-
-        console.log("📝 Updated participants:", updatedParticipants)
-
-        // Get all programs from localStorage
-        const allProgramsStr = localStorage.getItem("programs")
-        const allPrograms = allProgramsStr ? JSON.parse(allProgramsStr) : []
-
-        // Find and update the specific program
-        const programIndex = allPrograms.findIndex((p: Program) => p.id === program.id)
-        if (programIndex !== -1) {
-          allPrograms[programIndex] = updatedProgram
-          console.log("✅ Updated program in array")
-        } else {
-          console.log("⚠️ Program not found in array, adding it")
-          allPrograms.push(updatedProgram)
+      // Fallback to devWalletData
+      const devWalletStr = localStorage.getItem("devWalletData")
+      if (devWalletStr) {
+        try {
+          const data = JSON.parse(devWalletStr!)
+          setWalletData({
+            publicAddress: data.publicAddress || data.address,
+            type: data.type,
+            privateKey: data.privateKey,
+            mnemonic: data.mnemonic,
+            createdAt: data.createdAt || new Date().toISOString(),
+            updatedAt: data.updatedAt || new Date().toISOString(),
+          })
+          console.log("🔥 Wallet data loaded from devWalletData:", data)
+          return
+        } catch (error) {
+          console.error("Error parsing wallet data from devWalletData:", error)
         }
+      }
+    }
 
-        // Save back to localStorage
-        localStorage.setItem("programs", JSON.stringify(allPrograms))
-        console.log("💾 Saved programs to localStorage")
+    loadWalletData()
 
-        // Verify the save worked
-        const verifyStr = localStorage.getItem("programs")
-        const verifyPrograms = verifyStr ? JSON.parse(verifyStr) : []
-        const verifyProgram = verifyPrograms.find((p: Program) => p.id === program.id)
-        console.log("🔍 Verification - Program participants:", verifyProgram?.participants)
-        console.log(
-          "🔍 Verification - User in participants?",
-          verifyProgram?.participants?.includes(walletData.publicAddress),
+    // Listen for wallet updates
+    const handleWalletUpdate = () => loadWalletData()
+    const handleLogout = () => setWalletData(null)
+
+    window.addEventListener("walletUpdated", handleWalletUpdate)
+    window.addEventListener("walletLogout", handleLogout)
+
+    return () => {
+      window.removeEventListener("walletUpdated", handleWalletUpdate)
+      window.removeEventListener("walletLogout", handleLogout)
+    }
+  }, [])
+
+  // Load all public programs from BSV
+  useEffect(() => {
+    const loadAllPrograms = async () => {
+      setIsLoading(true)
+      try {
+        // Load all public programs from BSV blockchain
+        const allPrograms = await loadPublicPrograms()
+
+        // Filter only public programs
+        const publicPrograms = allPrograms.filter(
+          (program) => program.status === "active" && program.metadata?.privacy?.isPublic !== false,
         )
 
-        // Update local state
-        setPrograms((prev) => prev.map((p) => (p.id === program.id ? updatedProgram : p)))
-
-        // Dispatch storage event to notify other components
-        window.dispatchEvent(new Event("storage"))
-        window.dispatchEvent(new Event("programsUpdated"))
-
-        alert(`Successfully joined ${program.name}!`)
-        console.log("🎉 Program join complete!")
+        setPrograms(publicPrograms)
+        setFilteredPrograms(publicPrograms)
+        console.log("📊 Loaded public programs:", publicPrograms)
       } catch (error) {
-        console.error("❌ Error joining program:", error)
-        alert("Error joining program. Please try again.")
+        console.error("Error loading programs:", error)
+        setPrograms([])
+        setFilteredPrograms([])
+      } finally {
+        setIsLoading(false)
       }
-    },
-    [walletData],
-  )
+    }
 
-  // Filter programs based on search term
-  const filteredPrograms = programs.filter(
-    (program) =>
-      program.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      program.description.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+    loadAllPrograms()
+  }, [])
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-        <LoadingSpinner />
-      </div>
-    )
+  // Filter programs based on search and type
+  useEffect(() => {
+    let filtered = programs
+
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (program) =>
+          program.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          program.description.toLowerCase().includes(searchTerm.toLowerCase()),
+      )
+    }
+
+    // Filter by type
+    if (activeFilter !== "all") {
+      filtered = filtered.filter((program) => {
+        if (activeFilter === "punch-cards") return program.type === "punch-card"
+        if (activeFilter === "coupon-books") return program.type === "coupon-book"
+        return true
+      })
+    }
+
+    setFilteredPrograms(filtered)
+  }, [programs, searchTerm, activeFilter])
+
+  // Calculate stats from actual program data
+  const stats = {
+    activePrograms: programs.length,
+    punchCards: programs.filter((p) => p.type === "punch-card").length,
+    couponBooks: programs.filter((p) => p.type === "coupon-book").length,
+    participants: programs.reduce((total, program) => total + (program.totalParticipants || 0), 0),
+  }
+
+  const handleProgramClick = (programId: string) => {
+    // Navigate to program details or join program
+    window.location.href = `/programs/${programId}`
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Hero Section */}
-      <section className="text-center mb-16">
-        <h1 className="text-4xl font-bold mb-4">Loyalty Reimagined</h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Empower your business with blockchain-based loyalty programs. Connect with customers, partner with local
-          businesses, and grow your community.
-        </p>
+      <section className="relative py-20 px-4 text-center">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-5xl md:text-6xl font-bold mb-6">
+            <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 bg-clip-text text-transparent">
+              Loyalty Reimagined
+            </span>
+          </h1>
+          <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
+            Empower your business with blockchain-based loyalty programs. Connect with customers, partner with local
+            businesses, and grow your community.
+          </p>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mb-12">
+            <Card className="bg-blue-50 border-blue-200">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-blue-600">{stats.activePrograms}</div>
+                <div className="text-sm text-blue-700">Active Programs</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-orange-50 border-orange-200">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-orange-600">{stats.punchCards}</div>
+                <div className="text-sm text-orange-700">Punch Cards</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-green-50 border-green-200">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-green-600">{stats.couponBooks}</div>
+                <div className="text-sm text-green-700">Coupon Books</div>
+              </CardContent>
+            </Card>
+            <Card className="bg-purple-50 border-purple-200">
+              <CardContent className="p-4 text-center">
+                <div className="text-2xl font-bold text-purple-600">{stats.participants}</div>
+                <div className="text-sm text-purple-700">Participants</div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </section>
 
-      {/* Main Actions */}
-      <div className="grid md:grid-cols-2 gap-8 mb-16">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              For Users
-            </CardTitle>
-            <CardDescription>Join loyalty programs and earn rewards</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2">
-              <li className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-primary" />
-                Manage all your rewards in one place
-              </li>
-              <li className="flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-primary" />
-                Track your progress across programs
-              </li>
-              <li className="flex items-center gap-2">
-                <Gift className="w-4 h-4 text-primary" />
-                Redeem rewards easily
-              </li>
-            </ul>
-            <Link href={walletData ? "/dashboard" : "/wallet-generation"}>
-              <Button className="w-full">{walletData ? "View Dashboard" : "Get Started"}</Button>
-            </Link>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Store className="w-5 h-5" />
-              For Merchants
-            </CardTitle>
-            <CardDescription>Create and manage loyalty programs</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ul className="space-y-2">
-              <li className="flex items-center gap-2">
-                <Ticket className="w-4 h-4 text-primary" />
-                Create custom loyalty programs
-              </li>
-              <li className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-primary" />
-                Track customer engagement
-              </li>
-              <li className="flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-primary" />
-                Analyze program performance
-              </li>
-            </ul>
-            <Link href={walletData?.type === "merchant" ? "/merchant" : "/wallet-generation"}>
-              <Button className="w-full">
-                {walletData?.type === "merchant" ? "Merchant Dashboard" : "Create Program"}
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Programs Section */}
-      <section className="mb-16">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-3xl font-bold">Featured Programs</h2>
-          <Button variant="outline" className="gap-2">
-            View All Programs
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Search bar */}
-        <div className="relative mb-6 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-          <Input
-            placeholder="Search programs..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        <Tabs defaultValue="all" className="w-full">
-          <TabsList className="mb-8">
-            <TabsTrigger value="all">All Programs</TabsTrigger>
-            <TabsTrigger value="punch-card">Punch Cards</TabsTrigger>
-            <TabsTrigger value="coupon-book">Coupon Books</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="all" className="mt-0">
-            <div className="grid md:grid-cols-2 gap-6">
-              {filteredPrograms.length > 0 ? (
-                filteredPrograms.map((program) => (
-                  <EnhancedProgramCard
-                    key={program.id}
-                    program={program}
-                    onInteract={handleProgramInteraction}
-                    hasJoined={walletData?.publicAddress && program.participants?.includes(walletData.publicAddress)}
-                    walletData={walletData}
-                  />
-                ))
-              ) : (
-                <div className="col-span-2 text-center py-12">
-                  <Store className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No Programs Available</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Programs will appear here when merchants create them through the platform.
-                  </p>
-                  <div className="space-x-2">
-                    <Link href="/wallet-generation">
-                      <Button variant="outline">Get Started</Button>
-                    </Link>
-                    {walletData?.type === "merchant" && (
-                      <Link href="/merchant/create-program">
-                        <Button>Create Program</Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          {["punch-card", "coupon-book"].map((type) => (
-            <TabsContent key={type} value={type} className="mt-0">
-              <div className="grid md:grid-cols-2 gap-6">
-                {filteredPrograms
-                  .filter((program) => program.type === type)
-                  .map((program) => (
-                    <EnhancedProgramCard
-                      key={program.id}
-                      program={program}
-                      onInteract={handleProgramInteraction}
-                      hasJoined={walletData?.publicAddress && program.participants?.includes(walletData.publicAddress)}
-                      walletData={walletData}
-                    />
-                  ))}
+      {/* Features Section */}
+      <section className="py-16 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* For Users */}
+            <Card className="p-8 hover:shadow-lg transition-shadow">
+              <div className="flex items-center mb-4">
+                <Users className="h-6 w-6 text-blue-600 mr-2" />
+                <h3 className="text-2xl font-bold">For Users</h3>
               </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+              <p className="text-gray-600 mb-6">Join loyalty programs and earn rewards</p>
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center">
+                  <Gift className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Manage all your rewards in one place</span>
+                </li>
+                <li className="flex items-center">
+                  <Star className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Track your progress across programs</span>
+                </li>
+                <li className="flex items-center">
+                  <CreditCard className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Redeem rewards easily</span>
+                </li>
+              </ul>
+              <Button className="w-full bg-blue-600 hover:bg-blue-700">Get Started</Button>
+            </Card>
+
+            {/* For Merchants */}
+            <Card className="p-8 hover:shadow-lg transition-shadow">
+              <div className="flex items-center mb-4">
+                <MapPin className="h-6 w-6 text-purple-600 mr-2" />
+                <h3 className="text-2xl font-bold">For Merchants</h3>
+              </div>
+              <p className="text-gray-600 mb-6">Create and manage loyalty programs</p>
+              <ul className="space-y-3 mb-6">
+                <li className="flex items-center">
+                  <Gift className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Create custom loyalty programs</span>
+                </li>
+                <li className="flex items-center">
+                  <Users className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Track customer engagement</span>
+                </li>
+                <li className="flex items-center">
+                  <Star className="h-4 w-4 text-green-500 mr-2" />
+                  <span>Analyze program performance</span>
+                </li>
+              </ul>
+              <Button className="w-full bg-purple-600 hover:bg-purple-700">Create Program</Button>
+            </Card>
+          </div>
+        </div>
       </section>
-    </main>
+
+      {/* Featured Programs Section */}
+      <section className="py-16 px-4 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-3xl font-bold">Featured Programs</h2>
+            <Button variant="outline" className="flex items-center bg-transparent">
+              View All Programs
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="mb-8">
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search programs..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={activeFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("all")}
+              >
+                All Programs
+              </Button>
+              <Button
+                variant={activeFilter === "punch-cards" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("punch-cards")}
+              >
+                Punch Cards
+              </Button>
+              <Button
+                variant={activeFilter === "coupon-books" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveFilter("coupon-books")}
+              >
+                Coupon Books
+              </Button>
+            </div>
+          </div>
+
+          {/* Programs Grid */}
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="text-gray-600 mt-4">Loading programs from BSV blockchain...</p>
+            </div>
+          ) : filteredPrograms.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredPrograms.map((program) => (
+                <Card
+                  key={program.id}
+                  className="hover:shadow-lg transition-shadow cursor-pointer"
+                  onClick={() => handleProgramClick(program.id)}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="font-semibold text-lg">{program.name}</h3>
+                      <Badge variant={program.type === "punch-card" ? "default" : "secondary"}>
+                        {program.type === "punch-card" ? "Punch Card" : "Coupon Book"}
+                      </Badge>
+                    </div>
+                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{program.description}</p>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <div className="flex items-center">
+                        <Users className="h-4 w-4 mr-1" />
+                        <span>{program.totalParticipants || 0} participants</span>
+                      </div>
+                      {program.metadata?.expirationDate && (
+                        <div className="flex items-center">
+                          <Calendar className="h-4 w-4 mr-1" />
+                          <span>Expires {new Date(program.metadata.expirationDate).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-4 pt-4 border-t">
+                      <p className="text-xs text-gray-500">By {program.merchantName || "Local Merchant"}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Gift className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-600 mb-2">No Programs Available</h3>
+              <p className="text-gray-500 mb-6">Be the first to create a loyalty program!</p>
+              <Button className="bg-blue-600 hover:bg-blue-700">Create First Program</Button>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
   )
 }

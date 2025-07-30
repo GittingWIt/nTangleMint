@@ -1,9 +1,20 @@
 use crate::network::Network;
 use crate::util::{sha256d, Error, Result, Serializable};
 use base58::{ToBase58, FromBase58};
+
+// Conditional imports for crypto
+#[cfg(not(target_arch = "wasm32"))]
 use ring::digest::{digest, SHA256};
 use ring::hmac as ring_hmac;
+
+// Conditional imports for crypto
+#[cfg(not(target_arch = "wasm32"))]
 use secp256k1::{Secp256k1, SecretKey, PublicKey};
+
+#[cfg(target_arch = "wasm32")]
+// Remove this line:
+// use k256::ecdsa::SigningKey;
+
 use std::io::{self, Read, Write};
 use std::fmt;
 
@@ -94,7 +105,8 @@ impl ExtendedKey {
         Ok(extended_key)
     }
 
-    /// Derives a child key (hardened or normal)
+    /// Derives a child key (hardened or normal) - Native version
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn derive_child(&self, index: u32, secp: &Secp256k1<secp256k1::All>) -> Result<ExtendedKey> {
         let is_private = self.is_private();
         let is_hardened = index >= HARDENED_KEY;
@@ -186,6 +198,13 @@ impl ExtendedKey {
         eprintln!("Child key bytes: {:?}", child_key.0);
         Ok(child_key)
     }
+
+    /// Derives a child key (hardened or normal) - WASM version
+    #[cfg(target_arch = "wasm32")]
+    pub fn derive_child(&self, _index: u32) -> Result<ExtendedKey> {
+        // WASM implementation using k256 - simplified for now
+        Err(Error::InvalidOperation("Key derivation not yet implemented for WASM".to_string()))
+    }
 }
 
 impl Serializable<ExtendedKey> for ExtendedKey {
@@ -207,7 +226,8 @@ impl fmt::Debug for ExtendedKey {
     }
 }
 
-/// Derives an extended key from a seed or parent key
+/// Derives an extended key from a seed or parent key - Native version
+#[cfg(not(target_arch = "wasm32"))]
 pub fn derive_extended_key(
     input: &str,
     path: &str,
@@ -233,6 +253,32 @@ pub fn derive_extended_key(
     Ok(key)
 }
 
+/// Derives an extended key from a seed or parent key - WASM version
+#[cfg(target_arch = "wasm32")]
+pub fn derive_extended_key(
+    input: &str,
+    path: &str,
+    network: Network,
+) -> Result<ExtendedKey> {
+    if path.is_empty() || path == "m" {
+        let seed = hex::decode(input).map_err(|_| Error::BadData("Invalid hex seed".to_string()))?;
+        return extended_key_from_seed(&seed, network);
+    }
+
+    let mut key = ExtendedKey::decode(input)?;
+    let path_parts: Vec<&str> = path.trim_start_matches("m/").split('/').collect();
+    for part in path_parts {
+        let is_hardened = part.ends_with('H') || part.ends_with('\'');
+        let index_str = part.trim_end_matches(|c| c == 'H' || c == '\'');
+        let index: u32 = index_str
+            .parse()
+            .map_err(|_| Error::BadData("Invalid derivation index".to_string()))?;
+        let index = if is_hardened { index + HARDENED_KEY } else { index };
+        key = key.derive_child(index)?;
+    }
+    Ok(key)
+}
+
 /// Creates an extended private key from a seed
 pub fn extended_key_from_seed(seed: &[u8], network: Network) -> Result<ExtendedKey> {
     let hmac_key = ring_hmac::Key::new(ring_hmac::HMAC_SHA512, b"Bitcoin seed");
@@ -242,7 +288,12 @@ pub fn extended_key_from_seed(seed: &[u8], network: Network) -> Result<ExtendedK
         return Err(Error::BadData(format!("Invalid HMAC output length: {}", result_bytes.len())));
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     let secret_key = SecretKey::from_slice(&result_bytes[0..32])?;
+    
+    #[cfg(target_arch = "wasm32")]
+    let _secret_key = &result_bytes[0..32]; // Just store the bytes for WASM
+
     let chain_code = &result_bytes[32..64];
 
     let mut key = ExtendedKey([0; 78]);
@@ -256,14 +307,24 @@ pub fn extended_key_from_seed(seed: &[u8], network: Network) -> Result<ExtendedK
     key.0[9..13].copy_from_slice(&[0; 4]);
     key.0[13..45].copy_from_slice(chain_code);
     key.0[45] = 0;
+    
+    #[cfg(not(target_arch = "wasm32"))]
     key.0[46..78].copy_from_slice(&secret_key[..]);
+    
+    #[cfg(target_arch = "wasm32")]
+    key.0[46..78].copy_from_slice(_secret_key);
 
+    #[cfg(not(target_arch = "wasm32"))]
     eprintln!("Master private key: {}", hex::encode(&secret_key[..]));
+    
+    #[cfg(target_arch = "wasm32")]
+    eprintln!("Master private key: {}", hex::encode(_secret_key));
+    
     eprintln!("Master chain_code: {}", hex::encode(chain_code));
     Ok(key)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
     use hex;

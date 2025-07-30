@@ -1,11 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
-    // Still ignore ESLint during builds for now
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Enable TypeScript validation during builds
     ignoreBuildErrors: false,
   },
   images: {
@@ -22,7 +20,19 @@ const nextConfig = {
   env: {
     NEXT_TELEMETRY_DISABLED: "1",
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    // WASM support
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    }
+
+    // Add WASM file handling
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: "webassembly/async",
+    })
+
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -33,7 +43,7 @@ const nextConfig = {
         stream: require.resolve("stream-browserify"),
         buffer: require.resolve("buffer/"),
         path: require.resolve("path-browserify"),
-        util: require.resolve("util/"),
+        util: require.resolve("util"),
       }
 
       const webpack = require("webpack")
@@ -44,8 +54,32 @@ const nextConfig = {
         }),
       )
     }
+
+    // Optimize for development
+    if (dev) {
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300,
+      }
+    }
+
     return config
   },
+  headers: async () => [
+    {
+      source: "/(.*)",
+      headers: [
+        {
+          key: "Cross-Origin-Embedder-Policy",
+          value: "require-corp",
+        },
+        {
+          key: "Cross-Origin-Opener-Policy",
+          value: "same-origin",
+        },
+      ],
+    },
+  ],
 }
 
 module.exports = nextConfig
