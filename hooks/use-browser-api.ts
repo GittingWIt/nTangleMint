@@ -8,7 +8,10 @@ import { useState, useEffect } from "react"
  * @param deps Dependencies array for the effect
  * @returns [result, error, isLoading]
  */
-export function useBrowserApi<T>(apiFn: () => Promise<T> | T, deps: any[] = []): [T | null, Error | null, boolean] {
+export function useBrowserApi<T>(
+  apiFn: () => Promise<T> | T,
+  deps: any[] = []
+): [T | null, Error | null, boolean] {
   const [result, setResult] = useState<T | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -42,6 +45,7 @@ export function useBrowserApi<T>(apiFn: () => Promise<T> | T, deps: any[] = []):
     return () => {
       isMounted = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
 
   return [result, error, isLoading]

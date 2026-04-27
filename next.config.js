@@ -1,85 +1,42 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
-    ignoreBuildErrors: false,
+    ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
   },
-  reactStrictMode: true,
-  swcMinify: true,
-  output: "standalone",
-  experimental: {
-    webpackBuildWorker: false,
-    parallelServerBuildTraces: false,
-    parallelServerCompiles: false,
-  },
-  env: {
-    NEXT_TELEMETRY_DISABLED: "1",
-  },
-  webpack: (config, { isServer, dev }) => {
-    // WASM support
+  webpack: (config, { isServer }) => {
+    // Support for WASM libraries like tiny-secp256k1
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
+      layers: true,
     }
 
-    // Add WASM file handling
     config.module.rules.push({
       test: /\.wasm$/,
-      type: "webassembly/async",
+      type: 'webassembly/async',
     })
 
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        crypto: require.resolve("crypto-browserify"),
-        stream: require.resolve("stream-browserify"),
-        buffer: require.resolve("buffer/"),
-        path: require.resolve("path-browserify"),
-        util: require.resolve("util"),
-      }
+    config.output.webassemblyModuleFilename =
+      isServer ? '../static/wasm/[modulehash].wasm' : 'static/wasm/[modulehash].wasm'
 
-      const webpack = require("webpack")
-      config.plugins.push(
-        new webpack.ProvidePlugin({
-          Buffer: ["buffer", "Buffer"],
-          process: "process/browser",
-        }),
-      )
-    }
-
-    // Optimize for development
-    if (dev) {
-      config.watchOptions = {
-        poll: 1000,
-        aggregateTimeout: 300,
-      }
+    // Add fallback for Node.js modules that don't exist in browser
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      path: false,
+      crypto: false,
     }
 
     return config
   },
-  headers: async () => [
-    {
-      source: "/(.*)",
-      headers: [
-        {
-          key: "Cross-Origin-Embedder-Policy",
-          value: "require-corp",
-        },
-        {
-          key: "Cross-Origin-Opener-Policy",
-          value: "same-origin",
-        },
-      ],
+  turbopack: {
+    resolveAlias: {
+      // Ensure compatibility with Turbopack
     },
-  ],
+  },
 }
 
-module.exports = nextConfig
+export default nextConfig

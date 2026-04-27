@@ -1,12 +1,11 @@
 "use client"
 
 import { useRouter, usePathname } from "next/navigation"
-import { Menu, LogOut } from "lucide-react"
+import { Copy, LogOut, Check, LayoutGrid, Package, Zap, Settings, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useWallet } from "@/contexts/wallet-context"
 import Link from "next/link"
-import * as React from "react"
-import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useState, useEffect } from "react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,213 +15,270 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-
-interface WalletData {
-  publicAddress: string
-  type: "merchant" | "customer"
-  businessName?: string
-}
+import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 function shortenAddress(address: string): string {
   if (!address) return ""
-  return `${address.slice(0, 6)}...${address.slice(-6)}`
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 export default function Navigation() {
   const router = useRouter()
   const pathname = usePathname()
-  const [walletData, setWalletData] = React.useState<WalletData | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
-  const [isLoggingOut, setIsLoggingOut] = React.useState(false)
+  const { wallet, clearWallet, setWallet } = useWallet()
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
 
-  React.useEffect(() => {
-    const loadWalletData = async () => {
+  useEffect(() => {
+    setIsHydrated(true)
+    
+    // Load wallet from session storage if it exists and not already loaded
+    if (!wallet) {
       try {
-        setIsLoading(true)
-        console.log("[Navigation] Loading wallet data from localStorage...")
-
-        // Check localStorage for active session
-        const sessionData = localStorage.getItem("bsv-wallet-session")
-        if (sessionData) {
-          const session = JSON.parse(sessionData)
-          console.log("[Navigation] ✅ Found active wallet session:", session.address)
-          setWalletData({
-            publicAddress: session.address,
-            type: session.type,
-            ...(session.businessName !== undefined ? { businessName: session.businessName } : {}),
-          })
-        } else {
-          console.log("[Navigation] No active wallet session found")
-          setWalletData(null)
+        const storedWallet = sessionStorage.getItem("ntanglemint_wallet")
+        if (storedWallet) {
+          const parsedWallet = JSON.parse(storedWallet)
+          setWallet(parsedWallet)
         }
-      } catch (err) {
-        console.error("[Navigation] Failed to load wallet from localStorage:", err)
-        setWalletData(null)
-      } finally {
-        setIsLoading(false)
+      } catch (error) {
+        console.log("[v0] Failed to restore wallet from session:", error)
       }
-    }
-
-    loadWalletData()
-
-    // Listen for wallet updates (from other components)
-    const handleWalletUpdate = () => loadWalletData()
-    window.addEventListener("bsvWalletUpdated", handleWalletUpdate)
-    window.addEventListener("bsvWalletCleared", handleWalletUpdate)
-
-    return () => {
-      window.removeEventListener("bsvWalletUpdated", handleWalletUpdate)
-      window.removeEventListener("bsvWalletCleared", handleWalletUpdate)
     }
   }, [])
 
-  // Redirect away from wallet generation if already logged in
-  React.useEffect(() => {
-    if (!isLoading && walletData && pathname === "/wallet-generation") {
-      console.log("[Navigation] User already has wallet, redirecting from wallet generation page")
-      router.push(getDashboardRoute())
+  const handleCopyAddress = async () => {
+    if (!wallet?.publicAddress) {
+      console.log("[v0] No wallet address to copy")
+      return
     }
-  }, [isLoading, walletData, pathname, router])
-
-  const handleLogout = async () => {
     try {
-      setIsLoggingOut(true)
-      console.log("[Navigation] Logging out...")
-
-      // Clear localStorage
-      localStorage.removeItem("bsv-wallet-session")
-      localStorage.removeItem("bsv-wallet-data")
-
-      // Add a small delay to ensure session is cleared
-      await new Promise((resolve) => setTimeout(resolve, 100))
-
-      // Clear local state
-      setWalletData(null)
-
-      // Trigger wallet cleared event for other components
-      window.dispatchEvent(new Event("bsvWalletCleared"))
-
-      console.log("[Navigation] Successfully logged out")
-
-      // Navigate to home
-      router.push("/")
+      await navigator.clipboard.writeText(wallet.publicAddress)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error("[Navigation] Logout error:", err)
-    } finally {
-      setIsLoggingOut(false)
+      console.error("[v0] Failed to copy address:", err)
     }
+  }
+
+  const handleLogout = () => {
+    clearWallet()
+    setShowLogoutDialog(false)
+    router.push("/")
   }
 
   const handleCreateWallet = () => {
-    router.push("/wallet-generation")
+    router.push("/wallet")
   }
 
-  // Role-based routing
-  const getDashboardRoute = () => {
-    if (!walletData) return "/wallet-generation"
-    return walletData.type === "merchant" ? "/merchant" : "/customer"
+  if (!isHydrated) {
+    return null
   }
 
-  const getDashboardLabel = () => {
-    if (!walletData) return "Dashboard"
-    return walletData.type === "merchant" ? "Merchant Dashboard" : "Dashboard"
-  }
-
-  const handleCopyAddress = async () => {
-    if (walletData?.publicAddress) {
-      try {
-        await navigator.clipboard.writeText(walletData.publicAddress)
-        console.log("[Navigation] Address copied to clipboard")
-      } catch (err) {
-        console.error("[Navigation] Failed to copy address:", err)
-      }
-    }
-  }
+  const isInDashboard = pathname.includes("/dashboard")
+  const isInSettings = pathname.includes("/settings") || pathname.includes("/security")
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white shadow-sm">
-      <div className="container mx-auto px-4 flex h-14 items-center justify-between">
-        <div className="flex items-center gap-6">
+    <>
+      {/* Sidebar Navigation */}
+      <aside className="fixed left-0 top-0 h-screen w-64 border-r bg-muted/50 overflow-y-auto flex flex-col">
+        {/* Logo */}
+        <div className="px-4 py-4 border-b">
           <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
-            <span className="font-bold text-lg text-gray-900">nTangleMint</span>
+            <span className="font-bold text-lg">nTangle<span className="text-green-600">Mint</span></span>
           </Link>
-          <Link
-            href="/about"
-            className={cn(
-              "text-sm font-medium transition-colors hover:text-gray-900",
-              pathname === "/about" ? "text-gray-900" : "text-gray-600",
-            )}
-          >
-            About
-          </Link>
-          {walletData && (
-            <Link
-              href={getDashboardRoute()}
-              className={cn(
-                "text-sm font-medium transition-colors hover:text-gray-900",
-                pathname.includes("/merchant") || pathname.includes("/customer") ? "text-gray-900" : "text-gray-600",
-              )}
-            >
-              {getDashboardLabel()}
-            </Link>
-          )}
         </div>
 
-        <div className="flex items-center gap-4">
-          {!isLoading && (
+        {/* Navigation Menu */}
+        <nav className="flex-1 flex flex-col gap-2 p-4 overflow-y-auto">
+          {wallet ? (
             <>
-              {walletData ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="font-mono">
-                      <Menu className="mr-2 h-4 w-4" />
-                      {shortenAddress(walletData.publicAddress)}
-                      <span className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded capitalize">{walletData.type}</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem asChild>
-                      <button className="w-full" onClick={handleCopyAddress}>
-                        <span>Copy Address</span>
-                      </button>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <button className="w-full flex items-center">
-                            <LogOut className="mr-2 h-4 w-4" />
-                            <span>Logout</span>
-                          </button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to logout? This will disconnect your BSV wallet.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleLogout} disabled={isLoggingOut}>
-                              {isLoggingOut ? "Logging out..." : "Logout"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button variant="outline" onClick={handleCreateWallet}>
-                  Connect BSV Wallet
+              {/* Dashboard Section */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2">
+                  Main
+                </p>
+                
+                <Link href="/dashboard">
+                  <Button
+                    variant={isInDashboard ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                    Dashboard
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Creator Section - only show if wallet exists */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2">
+                  Creator
+                </p>
+
+                <Link href="/dashboard?tab=programs">
+                  <Button
+                    variant={pathname === "/dashboard" && new URLSearchParams(window?.location?.search).get("tab") === "programs" ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <Package className="h-4 w-4" />
+                    My Programs
+                  </Button>
+                </Link>
+              </div>
+
+              {/* User Section - only show if wallet exists */}
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2">
+                  Rewards
+                </p>
+
+                <Link href="/dashboard?tab=cards">
+                  <Button
+                    variant={pathname === "/dashboard" && new URLSearchParams(window?.location?.search).get("tab") === "cards" ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <Zap className="h-4 w-4" />
+                    Punch Cards
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Settings Section - only show if wallet exists */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2">
+                  Account
+                </p>
+
+                <Link href="/settings">
+                  <Button
+                    variant={pathname.includes("/settings") ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Settings
+                  </Button>
+                </Link>
+
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+                  onClick={() => setShowLogoutDialog(true)}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
                 </Button>
-              )}
+              </div>
             </>
+          ) : (
+            <div className="mb-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 py-2">
+                Main
+              </p>
+              <Link href="/wallet">
+                <Button
+                  variant={pathname === "/wallet" ? "default" : "ghost"}
+                  className="w-full justify-start gap-2"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Connect Wallet
+                </Button>
+              </Link>
+            </div>
+          )}
+        </nav>
+
+        {/* About Link */}
+        <div className="border-t p-4">
+          <Link href="/about">
+            <Button
+              variant={pathname === "/about" ? "default" : "ghost"}
+              className="w-full justify-start gap-2 text-xs"
+              size="sm"
+            >
+              <Info className="h-4 w-4" />
+              About
+            </Button>
+          </Link>
+        </div>
+
+        {/* Wallet Info Footer */}
+        <div className="border-t p-4 mt-auto">
+          {wallet ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full gap-2 font-mono text-xs justify-start bg-transparent">
+                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold">
+                    {wallet.publicAddress?.[0]?.toUpperCase()}
+                  </div>
+                  <span className="truncate">
+                    {shortenAddress(wallet.publicAddress)}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-72 -ml-4 mb-2">
+                <DropdownMenuItem disabled className="flex-col items-start py-3">
+                  <div className="text-xs text-muted-foreground mb-2">Wallet Address</div>
+                  <div className="font-mono text-xs break-all bg-muted p-2 rounded w-full">
+                    {wallet.publicAddress}
+                  </div>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem asChild>
+                  <button className="w-full cursor-pointer" onClick={handleCopyAddress}>
+                    <div className="flex items-center w-full">
+                      {copied ? (
+                        <>
+                          <Check className="mr-2 h-4 w-4 text-green-600" />
+                          <span>Address Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="mr-2 h-4 w-4" />
+                          <span>Copy Address</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem asChild>
+                  <button className="w-full cursor-pointer text-destructive" onClick={() => setShowLogoutDialog(true)}>
+                    <div className="flex items-center">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Logout Wallet</span>
+                    </div>
+                  </button>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button onClick={handleCreateWallet} className="w-full gap-2" size="sm">
+              <span>Connect Wallet</span>
+            </Button>
           )}
         </div>
-      </div>
-    </header>
+      </aside>
+
+      {/* Logout Confirmation Dialog */}
+      <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Logout Wallet?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to logout? You'll need to recreate or restore your wallet to access your programs and punch cards.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout} className="bg-destructive hover:bg-destructive/90">
+              Logout
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

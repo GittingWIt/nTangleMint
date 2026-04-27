@@ -1,67 +1,32 @@
 {
-  "version": 2,
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
+  "buildCommand": "next build",
   "installCommand": "npm install",
   "outputDirectory": ".next",
   "env": {
-    "NEXT_TELEMETRY_DISABLED": "1",
-    "NODE_OPTIONS": "--max_old_space_size=4096",
-    "NEXT_PUBLIC_DEBUG_MODE": "@next_public_debug_mode",
-    "NEXT_PUBLIC_LOG_LEVEL": "@next_public_log_level",
-    "BSV_NETWORK": "@bsv_network",
-    "NEXT_PUBLIC_TEST_MODE": "@next_public_test_mode"
+    "NEXT_PUBLIC_NETWORK_MODE": "@NEXT_PUBLIC_NETWORK_MODE",
+    "NEXT_PUBLIC_PROGRAM_VERSION": "@NEXT_PUBLIC_PROGRAM_VERSION",
+    "NEXT_PUBLIC_DEFAULT_MERCHANT": "@NEXT_PUBLIC_DEFAULT_MERCHANT",
+    "NEXT_PUBLIC_TEST_MODE": "@NEXT_PUBLIC_TEST_MODE",
+    "NEXT_PUBLIC_REACT_VERSION": "@NEXT_PUBLIC_REACT_VERSION",
+    "NEXT_PUBLIC_NEXT_VERSION": "@NEXT_PUBLIC_NEXT_VERSION",
+    "NEXT_PUBLIC_RADIX_DROPDOWN_VERSION": "@NEXT_PUBLIC_RADIX_DROPDOWN_VERSION",
+    "NEXT_PUBLIC_RADIX_SLOT_VERSION": "@NEXT_PUBLIC_RADIX_SLOT_VERSION",
+    "NEXT_PUBLIC_STORAGE_PREFIX": "@NEXT_PUBLIC_STORAGE_PREFIX",
+    "NEXT_PUBLIC_RESET_STORAGE": "@NEXT_PUBLIC_RESET_STORAGE",
+    "NEXT_PUBLIC_WALLET_SALT": "@NEXT_PUBLIC_WALLET_SALT",
+    "NEXT_PUBLIC_DEBUG_MODE": "@NEXT_PUBLIC_DEBUG_MODE",
+    "NEXT_PUBLIC_RECAPTCHA_SITE_KEY": "@NEXT_PUBLIC_RECAPTCHA_SITE_KEY",
+    "RECAPTCHA_SECRET_KEY": "@RECAPTCHA_SECRET_KEY",
+    "NEXT_TELEMETRY_DISABLED": "@NEXT_TELEMETRY_DISABLED"
   },
   "functions": {
-    "app/api/**/*.ts": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 30
+    "app/api/**": {
+      "memory": 1024,
+      "maxDuration": 60
     }
   },
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        }
-      ]
-    },
-    {
-      "source": "/packages/bsv-core/pkg/(.*)",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/wasm"
-        },
-        {
-          "key": "Cross-Origin-Embedder-Policy",
-          "value": "require-corp"
-        },
-        {
-          "key": "Cross-Origin-Opener-Policy",
-          "value": "same-origin"
-        }
-      ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    }
-  ],
   "regions": ["iad1"],
-  "github": {
-    "silent": true
+  "git": {
+    "deploymentEnabled": true
   }
 }

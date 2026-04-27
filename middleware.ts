@@ -1,37 +1,65 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { checkCORS, handleCORSPreflight, withCORSHeaders } from "@/lib/middleware/cors"
+import { checkIPThrottle, getClientIP } from "@/lib/middleware/ip-throttle"
 
 export function middleware(request: NextRequest) {
-  // Get the pathname of the request (e.g. /, /user, /merchant)
   const path = request.nextUrl.pathname
 
-  // If the path includes dashboard, check for wallet data
-  if (path.includes("dashboard")) {
-    const hasWallet = request.cookies.has("wallet_data")
+  // Handle CORS preflight requests (OPTIONS)
+  if (request.method === "OPTIONS") {
+    return handleCORSPreflight(request)
+  }
 
-    if (!hasWallet) {
-      return NextResponse.redirect(new URL("/wallet-generation", request.url))
+  // IP Throttling for API routes
+  if (path.startsWith("/api")) {
+    const clientIP = getClientIP(request)
+    const { limited, remaining, resetIn } = checkIPThrottle(clientIP, path)
+    
+    if (limited) {
+      return new NextResponse(
+        JSON.stringify({ 
+          error: "Too many requests", 
+          retryAfter: resetIn 
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            "Content-Type": "application/json",
+            "Retry-After": String(resetIn),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": String(resetIn),
+          } 
+        }
+      )
     }
   }
 
-  // If we're on wallet-generation and have wallet data, redirect to appropriate dashboard
-  if (path === "/wallet-generation") {
-    const walletData = request.cookies.get("wallet_data")
-    if (walletData) {
-      try {
-        const { type } = JSON.parse(walletData.value)
-        return NextResponse.redirect(new URL(`/${type}/dashboard`, request.url))
-      } catch (error) {
-        // If there's an error parsing the wallet data, continue to wallet-generation
-        return NextResponse.next()
-      }
-    }
+  // Check CORS for all requests
+  const { allowed: corsAllowed, headers: corsHeaders } = checkCORS(request)
+
+  // If CORS check fails for protected endpoint, reject with 403
+  if (!corsAllowed && path.startsWith("/api")) {
+    console.warn(`[v0] CORS rejected request to ${path}`)
+    const response = new NextResponse(
+      JSON.stringify({ error: "CORS policy: Origin not allowed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    )
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value)
+    })
+    return response
   }
 
-  return NextResponse.next()
+  // Apply CORS headers to response
+  let response = NextResponse.next()
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    response.headers.set(key, value)
+  })
+
+  return response
 }
 
 export const config = {
-  matcher: ["/wallet-generation", "/:type/dashboard"],
+  matcher: ["/api/:path*"],
 }
-

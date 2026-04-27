@@ -1,12 +1,19 @@
-// Import global functions FIRST
-import "@/lib/global-functions"
-
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import "./styles/globals.css"
+import RootLayoutClient from "./layout-client"
+import "./globals.css"
 import type React from "react"
-import Navigation from "@/components/Navigation"
-import ClientLayout from "@/components/ClientLayout"
+import * as Sentry from "@sentry/nextjs"
+
+// Initialize Sentry on the server
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 0.1,
+    debug: false,
+  })
+}
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -20,14 +27,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ClientLayout>
-          <Navigation />
-          <div className="min-h-screen bg-white">{children}</div>
-        </ClientLayout>
-      </body>
-    </html>
-  )
+  // Rebuild cache
+  return <RootLayoutClient inter={inter.className}>{children}</RootLayoutClient>
 }

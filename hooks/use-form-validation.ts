@@ -25,7 +25,6 @@ export function useFormValidation(initialState: FormState, validationRules: Vali
 
     // Check each field against its validation rule
     for (const field of Object.keys(validationRules)) {
-      // Make sure both the field and validation rule exist
       const validationRule = validationRules[field]
 
       if (typeof validationRule === "function" && field in values) {
@@ -35,7 +34,6 @@ export function useFormValidation(initialState: FormState, validationRules: Vali
           formIsValid = false
         }
       } else {
-        // Either field doesn't exist in values or validation rule is not a function
         newErrors[field] = `${field} is missing or has no validation rule`
         formIsValid = false
       }
@@ -45,19 +43,16 @@ export function useFormValidation(initialState: FormState, validationRules: Vali
     setIsValid(formIsValid)
   }, [values, validationRules, isDirty])
 
-  // Update a single field
   const handleChange = (field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
     if (!isDirty) setIsDirty(true)
   }
 
-  // Set multiple fields at once
   const setFields = (newValues: Partial<FormState>) => {
     setValues((prev) => ({ ...prev, ...newValues }))
     if (!isDirty) setIsDirty(true)
   }
 
-  // Reset the form
   const reset = () => {
     setValues(initialState)
     setErrors({})

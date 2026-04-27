@@ -1,85 +1,62 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { createContext, useContext, useState, useEffect } from "react"
+import { getCurrentWallet, logout } from "@/lib/services/wallet-service"
+
+import type { Wallet } from "@/lib/types"
 
 interface WalletContextType {
-  walletAddress: string | null
-  setWalletAddress: (address: string | null) => void
-  isConnected: boolean
-  connectWallet: () => Promise<void>
-  disconnectWallet: () => void
+  wallet: Wallet | null
+  setWallet: (wallet: Wallet | null) => void
+  clearWallet: () => void
+  isLoading: boolean
 }
 
-const WalletContext = createContext<WalletContextType>({
-  walletAddress: null,
-  setWalletAddress: () => {},
-  isConnected: false,
-  connectWallet: async () => {},
-  disconnectWallet: () => {},
-})
+const WalletContext = createContext<WalletContextType | undefined>(undefined)
 
-interface WalletProviderProps {
-  children: React.ReactNode
-}
+export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null)
-  const isConnected = !!walletAddress
-
+  // Hydrate wallet from session storage on mount
   useEffect(() => {
-    const getWalletData = () => {
-      try {
-        const data = localStorage.getItem("walletData")
-        return data ? JSON.parse(data) : null
-      } catch {
-        return null
-      }
-    }
-
-    const storedData = getWalletData()
-    if (storedData && storedData.address) {
-      setWalletAddress(storedData.address)
-    }
-  }, [])
-
-  const connectWallet = useCallback(async () => {
     try {
-      // Get existing wallet data from localStorage
-      const existingData = localStorage.getItem("walletData")
-      if (existingData) {
-        const walletData = JSON.parse(existingData)
-        if (walletData.publicAddress) {
-          setWalletAddress(walletData.publicAddress)
-          return
-        }
+      const savedWallet = getCurrentWallet()
+      if (savedWallet) {
+        setWallet(savedWallet)
+        console.log("[v0] Wallet context hydrated from session storage")
       }
-
-      // If no existing wallet, user needs to create/restore one
-      console.log("No wallet found - user should create or restore a wallet")
     } catch (error) {
-      console.error("Error connecting wallet:", error)
+      console.error("[v0] Failed to hydrate wallet context:", error)
+    } finally {
+      setIsLoading(false)
     }
   }, [])
 
-  const disconnectWallet = useCallback(() => {
-    setWalletAddress(null)
-    localStorage.removeItem("walletData")
-  }, [])
-
-  const value: WalletContextType = {
-    walletAddress,
-    setWalletAddress,
-    isConnected,
-    connectWallet,
-    disconnectWallet,
+  const clearWallet = () => {
+    setWallet(null)
+    logout() // Clear wallet from session storage
   }
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
+  return (
+    <WalletContext.Provider
+      value={{
+        wallet,
+        setWallet,
+        clearWallet,
+        isLoading,
+      }}
+    >
+      {children}
+    </WalletContext.Provider>
+  )
 }
 
-const useWallet = () => {
-  return useContext(WalletContext)
+export function useWallet() {
+  const context = useContext(WalletContext)
+  if (!context) {
+    throw new Error("useWallet must be used within WalletProvider")
+  }
+  return context
 }
-
-export { WalletProvider, useWallet }
