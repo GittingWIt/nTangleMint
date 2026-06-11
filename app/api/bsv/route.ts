@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
 /**
  * Handle Minterest requests - query blockchain for all programs customer has shown interest in
  * GET /api/bsv?type=minterest&address=...
+ * 
+ * Phase 6: Minterest tracks customer interest in programs (blockchain-native identity via BSV address)
  */
 async function handleMinterest(searchParams: URLSearchParams) {
   const address = searchParams.get('address')
@@ -101,12 +103,12 @@ async function handleMinterest(searchParams: URLSearchParams) {
   const cached = cacheService.get<unknown>(cacheKey)
 
   if (cached !== null) {
-    console.log(`[v0] [API] Returning cached Minterest for ${address}`)
+    console.log(`[v0] [API] Returning cached Minterest for customer address ${address}`)
     return NextResponse.json(cached, { status: 200 })
   }
 
   try {
-    console.log(`[v0] [API] Querying Minterest for ${address} on ${network}`)
+    console.log(`[v0] [API] Querying Minterest for customer ${address} on ${network}`)
 
     // Query all nTangleMint transactions
     const searchUrl = `https://api.whatsonchain.com/v1/bsv/${network}/script/search/nTangleMint`
@@ -135,6 +137,7 @@ async function handleMinterest(searchParams: URLSearchParams) {
     const seenPrograms = new Set<string>()
 
     // Parse each transaction for Minterest records
+    // Phase 6 record format: ["nTangleMint", "Minterest", programId, customerAddress, timestamp]
     for (const tx of transactions) {
       try {
         if (!tx.vout || !Array.isArray(tx.vout)) continue
@@ -196,9 +199,9 @@ async function handleMinterest(searchParams: URLSearchParams) {
           // Check for Minterest record: ["nTangleMint", "Minterest", programId, customerAddress, timestamp]
           if (fields.length >= 4 && fields[0] === 'nTangleMint' && fields[1] === 'Minterest') {
             const programId = fields[2]
-            const txAddress = fields[3]?.trim()
+            const customerAddress = fields[3]?.trim()
 
-            if (txAddress === address.trim() && !seenPrograms.has(programId)) {
+            if (customerAddress === address.trim() && !seenPrograms.has(programId)) {
               programIds.push(programId)
               seenPrograms.add(programId)
               console.log(`[v0] [API] Found Minterest for program ${programId}`)
@@ -213,7 +216,7 @@ async function handleMinterest(searchParams: URLSearchParams) {
     const result = { programIds }
     cacheService.set(cacheKey, result, CACHE_TTL.PROGRAM)
     
-    console.log(`[v0] [API] Minterest query complete - found ${programIds.length} programs for ${address}`)
+    console.log(`[v0] [API] Minterest query complete - found ${programIds.length} programs for customer ${address}`)
     return NextResponse.json(result, { status: 200 })
   } catch (error) {
     console.error('[v0] [API] Minterest query error:', error)

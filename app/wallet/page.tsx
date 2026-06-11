@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createWallet } from "@/lib/services/wallet-create"
 import { restoreWallet } from "@/lib/services/wallet-restore"
@@ -34,7 +34,8 @@ export default function WalletPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null)
+  const [createRecaptchaToken, setCreateRecaptchaToken] = useState<string | null>(null)
+  const [restoreRecaptchaToken, setRestoreRecaptchaToken] = useState<string | null>(null)
 
   // Use wallet redirect hook - redirects to dashboard if wallet exists (unless showing seed phrase)
   useWalletRedirect({
@@ -47,12 +48,21 @@ export default function WalletPage() {
     sessionStorage.removeItem("ntanglemint_pending_mnemonic")
   }, [])
 
+  // Memoize setState callbacks so ReCaptcha component doesn't re-render unnecessarily
+  const handleSetCreateRecaptchaToken = useCallback((token: string | null) => {
+    setCreateRecaptchaToken(token)
+  }, [])
+
+  const handleSetRestoreRecaptchaToken = useCallback((token: string | null) => {
+    setRestoreRecaptchaToken(token)
+  }, [])
+
   const networkMode = getNetworkMode()
 
   const handleCreateWallet = async () => {
     setError("")
 
-    if (!recaptchaToken) {
+    if (!createRecaptchaToken) {
       setError("Please complete the reCAPTCHA verification")
       return
     }
@@ -87,7 +97,7 @@ export default function WalletPage() {
   const handleRestoreWallet = async () => {
     setError("")
 
-    if (!recaptchaToken) {
+    if (!restoreRecaptchaToken) {
       setError("Please complete the reCAPTCHA verification")
       return
     }
@@ -264,9 +274,9 @@ export default function WalletPage() {
 
                   {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-                  <ReCaptcha onVerify={setRecaptchaToken} />
+                  <ReCaptcha onVerify={handleSetCreateRecaptchaToken} />
 
-                  <Button className="w-full" onClick={handleCreateWallet} disabled={isLoading || !recaptchaToken}>
+                  <Button className="w-full" onClick={handleCreateWallet} disabled={isLoading || !createRecaptchaToken}>
                     {isLoading ? "Creating..." : "Create Wallet"}
                   </Button>
                 </TabsContent>
@@ -302,9 +312,9 @@ export default function WalletPage() {
 
                   {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-                  <ReCaptcha onVerify={setRecaptchaToken} />
+                  <ReCaptcha onVerify={handleSetRestoreRecaptchaToken} />
 
-                  <Button className="w-full" onClick={handleRestoreWallet} disabled={isLoading || !recaptchaToken}>
+                  <Button className="w-full" onClick={handleRestoreWallet} disabled={isLoading || !restoreRecaptchaToken}>
                     {isLoading ? "Restoring..." : "Restore Wallet"}
                   </Button>
                 </TabsContent>

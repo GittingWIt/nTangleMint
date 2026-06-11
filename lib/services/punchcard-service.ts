@@ -1,98 +1,123 @@
 /**
  * Punch Card Service
  *
- * Handles the complete punch card lifecycle on the BSV blockchain:
+ * Handles the complete punch card lifecycle on the BSV blockchain.
+ * Phase 7 Architecture: 14-field structure (Field 4 = programName)
  *
- *   nTangled  - First purchase, NFT minted to customer wallet, card created at punches=1
- *   nProcess  - Each subsequent punch, increments count
- *   Redeemed  - Final punch, reward claimed, program complete for this customer
- *
- * On-chain OP_RETURN formats (extensible, no versioning):
- *   nTangleMint | nTangled  | {programID} | {customerWalletID} | reserved1-7
- *   nTangleMint | nProcess  | {programID} | {customerWalletID} | reserved1-7
- *   nTangleMint | Redeemed  | {programID} | {customerWalletID} | reserved1-7
- *
- * Unique key for a punch card: programID + customerWalletID
- * PunchID = txId of the nTangled transaction (immutable on-chain proof)
+ * Transaction types (Field 2 in OP_RETURN) are DERIVED from punchIndex:
+ *   nTangle   - First punch, card creation (punchIndex=1)
+ *   nProcess  - Subsequent punch, accumulation (1 < punchIndex < requiredPunches)
+ *   Redeem    - Final punch, reward claimed (punchIndex = requiredPunches)
  */
 
 import type { Program, PunchCard, PunchCardStatus } from "@/lib/types"
-import { getPunchCardsByCustomer, savePunchCard, getPunchCardByProgramId } from "./storage-service"
+import { getPunchCardsByParticipant, savePunchCard, getPunchCardByProgramId } from "./storage-service"
 import { sendTransaction } from "./transaction-service"
 import { getStoredMnemonic, getStoredPassword, getPrivKeyWif } from "./wallet-service"
 import { invalidateOnChainCache } from "./onchain-state-service"
+import {
+  buildPunchCardNTangleTransaction,
+  buildPunchCardNProcessTransaction,
+  buildPunchCardRedeemTransaction,
+} from "@/lib/constants/punchcard-schema"
 
 // ============================================================================
 // Punch Card Queries
 // ============================================================================
 
-export function getActivePunchCards(customerAddress: string): PunchCard[] {
-  const cards = getPunchCardsByCustomer(customerAddress)
+/**
+ * Get all active punch cards for a wallet holder.
+ * @param publicAddress - Participant's BSV public address
+ */
+export function getActivePunchCards(publicAddress: string): PunchCard[] {
+  const cards = getPunchCardsByParticipant(publicAddress)
   return cards.filter(card => card.status === "active")
 }
 
-export function getCompletedPunchCards(customerAddress: string): PunchCard[] {
-  const cards = getPunchCardsByCustomer(customerAddress)
+/**
+ * Get all redeemed punch cards for a wallet holder.
+ * @param publicAddress - Participant's BSV public address
+ */
+export function getCompletedPunchCards(publicAddress: string): PunchCard[] {
+  const cards = getPunchCardsByParticipant(publicAddress)
   return cards.filter(card => card.status === "redeemed")
 }
 
-export function getPunchCard(customerAddress: string, programId: string): PunchCard | null {
-  return getPunchCardByProgramId(customerAddress, programId)
-}
-
-export { getPunchCardByProgramId } from "./storage-service"
-
-export function hasPunchCard(customerAddress: string, programId: string): boolean {
-  return getPunchCardByProgramId(customerAddress, programId) !== null
+/**
+ * Get a specific punch card.
+ * @param publicAddress - Participant's BSV public address
+ * @param programId - Program ID (pid_{12-char-base36})
+ */
+export function getPunchCard(publicAddress: string, programId: string): PunchCard | null {
+  return getPunchCardByProgramId(publicAddress, programId)
 }
 
 /**
- * Count unique customers who have joined a program
+ * Check if a wallet has a punch card for a program.
+ * @param publicAddress - Participant's BSV public address
+ * @param programId - Program ID
+ */
+export function hasPunchCard(publicAddress: string, programId: string): boolean {
+  return getPunchCardByProgramId(publicAddress, programId) !== null
+}
+
+/**
+ * Count unique participants that have joined a program.
+ * Queries all punch cards and finds unique addresses for the given program.
  */
 export function getParticipantCountForProgram(programId: string): number {
-  const storageKey = `punchcards_${programId}`
-  const stored = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null
-  if (!stored) return 0
-
+  if (typeof window === "undefined") return 0
+  
   try {
-    const cards: PunchCard[] = JSON.parse(stored)
-    const uniqueCustomers = new Set(cards.map(card => card.customerAddress))
-    return uniqueCustomers.size
+    const keys = Object.keys(localStorage)
+    const punchCardKeys = keys.filter(k => k.startsWith("punchcards_1") || k.startsWith("punchcards_3"))
+    
+    const uniqueAddresses = new Set<string>()
+    
+    for (const key of punchCardKeys) {
+      const publicAddress = key.replace("punchcards_", "")
+      const stored = localStorage.getItem(key)
+      if (!stored) continue
+      
+      try {
+        const cards: PunchCard[] = JSON.parse(stored)
+        const hasProgram = cards.some(card => card.programId === programId && card.punches > 0)
+        if (hasProgram) {
+          uniqueAddresses.add(publicAddress)
+        }
+      } catch {
+        // Skip malformed entries
+      }
+    }
+    
+    return uniqueAddresses.size
   } catch {
     return 0
   }
 }
 
 // ============================================================================
-// nTangled - First Purchase (NFT Mint)
+// nTangle - First Purchase (Card Creation)
 // ============================================================================
 
 /**
- * Create a punch card via nTangled transaction.
+ * Create a punch card via nTangle transaction (14-field structure).
+ * Uses programName from the program object to build the complete OP_RETURN.
  *
- * This is the NFT mint event - the customer's first purchase creates the card.
- * OP_RETURN: nTangleMint | nTangled | {programID} | {customerWalletID} | reserved1-7
- *
- * @param program - The program being joined
- * @param customerAddress - Customer's BSV address
- * @param customerWalletID - Customer's walletID (wid_{12-char-base36})
+ * @param program - The program being joined (must have id, name, expirationDays, metadata)
+ * @param publicAddress - Participant's BSV public address
+ * @throws If program is invalid, publicAddress is missing, or wallet cannot sign
  */
 export async function nTangle(
   program: Program,
-  customerAddress: string,
-  customerWalletID: string,
+  publicAddress: string,
 ): Promise<PunchCard> {
-  if (!program?.merchantAddress) {
-    throw new Error("Invalid program or missing merchant address")
+  if (!program?.id) {
+    throw new Error("Invalid program")
   }
 
-  if (!customerWalletID) {
-    throw new Error("Customer walletID is required for nTangled transaction")
-  }
-
-  // Prevent merchant from joining their own program
-  if (customerAddress === program.merchantAddress) {
-    throw new Error("Program creators cannot join their own program. Use 'Manage' to administer the program.")
+  if (!publicAddress) {
+    throw new Error("Public address is required for nTangle transaction")
   }
 
   const mnemonic = getStoredMnemonic()
@@ -103,37 +128,42 @@ export async function nTangle(
   const password = getStoredPassword()
   const privKeyWif = getPrivKeyWif(mnemonic, password)
 
-  const satoshisPerPunch = program.metadata?.satoshisPerPunch
+  const satoshisPerPunch = program.metadata?.satoshisPerPunch || 1000
   if (!satoshisPerPunch) {
     throw new Error("Program is missing satoshisPerPunch - cannot create punch card")
   }
 
-  // nTangled OP_RETURN: nTangleMint | nTangled | {programID} | {customerWalletID} | reserved1-7
-  const opReturnFields = [
-    "nTangleMint",
-    "nTangled",
+  // Build 14-field OP_RETURN array using builder
+  // Builders return schema objects that must be converted to arrays for broadcasting
+  const nTangleSchema = buildPunchCardNTangleTransaction(
     program.id,
-    customerWalletID,
-    "", // reserved1
-    "", // reserved2
-    "", // reserved3
-    "", // reserved4
-    "", // reserved5
-    "", // reserved6
-    "", // reserved7
+    program.name || "Unnamed Program",
+    program.expirationDays || 365
+  )
+  
+  // Extract the 14-field array from schema object
+  const nTangleTx: string[] = [
+    nTangleSchema.field0,
+    nTangleSchema.field1,
+    nTangleSchema.field2,
+    nTangleSchema.field3,
+    nTangleSchema.field4,
+    nTangleSchema.field5,
+    nTangleSchema.field6,
+    "", "", "", "", "", "", "",
   ]
 
   const result = await sendTransaction({
+    senderAddress: publicAddress,
     senderPrivKeyWif: privKeyWif,
-    senderAddress: customerAddress,
     outputs: [
       {
-        address: program.merchantAddress,
+        address: program.creatorAddress,
         satoshis: satoshisPerPunch,
       },
     ],
     opReturn: {
-      data: opReturnFields,
+      data: nTangleTx,
     },
   })
 
@@ -141,13 +171,11 @@ export async function nTangle(
   const requiredPunches = program.metadata?.requiredPunches || 6
 
   const punchCard: PunchCard = {
-    txId: result.txId, // txId IS the PunchID - immutable on-chain proof
+    txId: result.txId,
     programId: program.id,
     program,
-    walletID: customerWalletID,
-    customerAddress,
-    merchantAddress: program.merchantAddress,
-    punches: 1, // nTangled starts at 1
+    participantAddress: publicAddress,
+    punches: 1,
     requiredPunches,
     reward: program.metadata?.reward || "Reward",
     createdAt: now,
@@ -155,7 +183,7 @@ export async function nTangle(
     status: "active",
   }
 
-  savePunchCard(punchCard)
+  savePunchCard(punchCard, publicAddress)
   invalidateOnChainCache(program.id)
 
   return punchCard
@@ -169,20 +197,19 @@ export const createPunchCard = nTangle
 // ============================================================================
 
 /**
- * Process a subsequent punch via nProcess transaction.
+ * Process a subsequent punch via nProcess transaction (14-field structure).
+ * Each call increments the punch count and broadcasts the new punch index.
+ * Requires the full program object to include programName in OP_RETURN.
  *
- * OP_RETURN: nTangleMint | nProcess | {programID} | {customerWalletID} | reserved1-7
- *
- * @param customerAddress - Customer's BSV address
- * @param customerWalletID - Customer's walletID
- * @param program - The program
+ * @param publicAddress - Participant's BSV public address
+ * @param program - The program (must include name for OP_RETURN)
+ * @throws If no punch card exists or card is not active
  */
 export async function nProcess(
-  customerAddress: string,
-  customerWalletID: string,
+  publicAddress: string,
   program: Program,
 ): Promise<{ txId: string; punchCard: PunchCard }> {
-  const existingCard = getPunchCard(customerAddress, program.id)
+  const existingCard = getPunchCard(publicAddress, program.id)
 
   if (!existingCard) {
     throw new Error("No punch card found. Please join first via nTangle.")
@@ -204,29 +231,35 @@ export async function nProcess(
   // Check if this punch will complete the card
   const willComplete = (existingCard.punches + 1) >= existingCard.requiredPunches
 
-  // nProcess OP_RETURN: nTangleMint | nProcess | {programID} | {customerWalletID} | reserved1-7
-  const opReturnFields = [
-    "nTangleMint",
-    "nProcess",
+  // Build 14-field OP_RETURN array using builder
+  // Pass the next punch index and program metadata
+  const nProcessSchema = buildPunchCardNProcessTransaction(
     program.id,
-    customerWalletID,
-    "", // reserved1
-    "", // reserved2
-    "", // reserved3
-    "", // reserved4
-    "", // reserved5
-    "", // reserved6
-    "", // reserved7
+    program.name || "Unnamed Program",
+    existingCard.punches + 1,
+    program.expirationDays || 365
+  )
+  
+  // Extract the 14-field array from schema object
+  const nProcessTx: string[] = [
+    nProcessSchema.field0,
+    nProcessSchema.field1,
+    nProcessSchema.field2,
+    nProcessSchema.field3,
+    nProcessSchema.field4,
+    nProcessSchema.field5,
+    nProcessSchema.field6,
+    "", "", "", "", "", "", "",
   ]
 
   const result = await sendTransaction({
+    senderAddress: publicAddress,
     senderPrivKeyWif: privKeyWif,
-    senderAddress: customerAddress,
     outputs: willComplete
-      ? [] // No payment on final punch (reward punch)
-      : [{ address: program.merchantAddress, satoshis: satoshisPerPunch }],
+      ? []
+      : [{ address: program.creatorAddress, satoshis: satoshisPerPunch }],
     opReturn: {
-      data: opReturnFields,
+      data: nProcessTx,
     },
   })
 
@@ -234,15 +267,11 @@ export async function nProcess(
   existingCard.punches += 1
   existingCard.updatedAt = new Date().toISOString()
 
-  // Check for BOGO instant completion or standard completion
-  const isBOGO = program.metadata?.programType === "bogo"
-  const shouldComplete = isBOGO || existingCard.punches >= existingCard.requiredPunches
-
-  if (shouldComplete) {
-    existingCard.status = "active" // Still active until Redeemed
+  if (existingCard.punches >= existingCard.requiredPunches) {
+    existingCard.completionTxId = result.txId
   }
 
-  savePunchCard(existingCard)
+  savePunchCard(existingCard, publicAddress)
   invalidateOnChainCache(program.id)
 
   return { txId: result.txId, punchCard: existingCard }
@@ -251,37 +280,40 @@ export async function nProcess(
 // Backward-compatible alias
 export const processPunchTransaction = nProcess
 
-// Legacy addPunch function (delegates to nProcess)
+/**
+ * Legacy addPunch function (delegates to nProcess).
+ * @deprecated Use nProcess instead
+ */
 export async function addPunch(
-  customerAddress: string,
+  publicAddress: string,
   programId: string,
   program: Program
 ): Promise<PunchCard | null> {
-  const card = getPunchCard(customerAddress, programId)
+  const card = getPunchCard(publicAddress, programId)
   if (!card) return null
 
-  // Need walletID - get from existing card
-  const result = await nProcess(customerAddress, card.walletID, program)
+  const result = await nProcess(publicAddress, program)
   return result.punchCard
 }
 
 // ============================================================================
-// Redeemed - Reward Claimed
+// Redeem - Reward Claimed
 // ============================================================================
 
 /**
- * Redeem a completed punch card via Redeemed transaction.
+ * Redeem a completed punch card via Redeem transaction (14-field structure).
+ * Marks the program as complete (redeemed) for this participant.
+ * Requires the full program object to include programName in OP_RETURN.
  *
- * OP_RETURN: nTangleMint | Redeemed | {programID} | {customerWalletID} | reserved1-7
- *
- * This marks the program as complete for this customer.
+ * @param publicAddress - Participant's BSV public address
+ * @param program - The program (must include name for OP_RETURN)
+ * @throws If punch card doesn't exist, is not complete, or is already redeemed
  */
 export async function redeem(
-  customerAddress: string,
-  customerWalletID: string,
+  publicAddress: string,
   program: Program,
 ): Promise<PunchCard> {
-  const card = getPunchCard(customerAddress, program.id)
+  const card = getPunchCard(publicAddress, program.id)
 
   if (!card) {
     throw new Error("No punch card found.")
@@ -303,51 +335,60 @@ export async function redeem(
   const password = getStoredPassword()
   const privKeyWif = getPrivKeyWif(mnemonic, password)
 
-  // Redeemed OP_RETURN: nTangleMint | Redeemed | {programID} | {customerWalletID} | reserved1-7
-  const opReturnFields = [
-    "nTangleMint",
-    "Redeemed",
+  // Build 14-field OP_RETURN array using builder
+  // Pass the final punch count and program metadata
+  const redeemSchema = buildPunchCardRedeemTransaction(
     program.id,
-    customerWalletID,
-    "", // reserved1
-    "", // reserved2
-    "", // reserved3
-    "", // reserved4
-    "", // reserved5
-    "", // reserved6
-    "", // reserved7
+    program.name || "Unnamed Program",
+    card.punches,
+    program.expirationDays || 365
+  )
+  
+  // Extract the 14-field array from schema object
+  const redeemTx: string[] = [
+    redeemSchema.field0,
+    redeemSchema.field1,
+    redeemSchema.field2,
+    redeemSchema.field3,
+    redeemSchema.field4,
+    redeemSchema.field5,
+    redeemSchema.field6,
+    "", "", "", "", "", "", "",
   ]
 
   const result = await sendTransaction({
+    senderAddress: publicAddress,
     senderPrivKeyWif: privKeyWif,
-    senderAddress: customerAddress,
-    outputs: [], // No payment on redemption - just OP_RETURN
+    outputs: [],
     opReturn: {
-      data: opReturnFields,
+      data: redeemTx,
     },
   })
 
   // Update local state
   card.status = "redeemed"
   card.redeemedAt = new Date().toISOString()
+  card.completionTxId = result.txId
   card.updatedAt = card.redeemedAt
 
-  savePunchCard(card)
+  savePunchCard(card, publicAddress)
   invalidateOnChainCache(program.id)
 
   return card
 }
 
-// Backward-compatible alias
-export function redeemPunchCard(customerAddress: string, programId: string): PunchCard | null {
-  const card = getPunchCard(customerAddress, programId)
+/**
+ * Backward-compatible redeemPunchCard function.
+ * @deprecated Use redeem() instead
+ */
+export function redeemPunchCard(publicAddress: string, programId: string): PunchCard | null {
+  const card = getPunchCard(publicAddress, programId)
   if (!card || card.punches < card.requiredPunches) return null
 
-  // Sync version for backward compat - just updates local state
   card.status = "redeemed"
   card.redeemedAt = new Date().toISOString()
   card.updatedAt = card.redeemedAt
-  savePunchCard(card)
+  savePunchCard(card, publicAddress)
   return card
 }
 

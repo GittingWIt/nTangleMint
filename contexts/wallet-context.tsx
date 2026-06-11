@@ -25,7 +25,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const savedWallet = getCurrentWallet()
       if (savedWallet) {
         setWallet(savedWallet)
-        console.log("[v0] Wallet context hydrated from session storage")
       }
     } catch (error) {
       console.error("[v0] Failed to hydrate wallet context:", error)

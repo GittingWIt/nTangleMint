@@ -51,6 +51,6 @@ export async function GET(request: NextRequest) {
 /**
  * OPTIONS handler for CORS preflight requests
  */
-export function OPTIONS(request: NextRequest) {
+export async function OPTIONS(request: NextRequest) {
   return handleCORSPreflight(request)
 }

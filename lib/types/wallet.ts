@@ -1,22 +1,24 @@
 /**
- * Wallet Types
+ * Wallet Types - nTangleMint
  *
- * Single authoritative source for all wallet-related types in nTangleMint.
+ * Single authoritative source for all wallet-related types.
+ * Identity is blockchain-native: publicAddress is the universal identifier.
  *
- * On-chain identity record (OP_RETURN written once at wallet creation):
- *   nTangleMint | WALLET | v1 | {walletID} | reserved1-10
+ * Creator/Participant status determined by blockchain transaction context:
+ * - Creator: Wallet signed a "Create" transaction for a program (on-chain)
+ * - Participant: Wallet signed "nTangle"/"nProcess"/"Redeem" transactions (on-chain)
  *
- * walletID format: wid_{12-char-base36} — fixed 16 chars total.
- * 
- * NOTE: walletType removed from on-chain format.
- * Users now have unified wallets supporting both creator and user capabilities.
+ * All users have unified wallets supporting both capabilities.
  * UI controls feature visibility, not wallet type.
  */
 
 // ============================================================================
-// Core Primitives
+// Core Types
 // ============================================================================
 
+/**
+ * WalletBalance: Current on-chain balance state
+ */
 export interface WalletBalance {
   address: string
   confirmed: number
@@ -24,15 +26,14 @@ export interface WalletBalance {
   total: number
 }
 
-// ============================================================================
-// Unified Wallet Data
-// All users have the same wallet structure supporting both roles.
-// ============================================================================
-
+/**
+ * Wallet: Complete unified wallet (creator + participant capabilities)
+ *
+ * Identity is blockchain-native via publicAddress (BSV address).
+ * All wallets support both creating programs and joining existing ones.
+ */
 export interface Wallet {
-  /** Unique wallet identifier. Format: wid_{12-char-base36}. Fixed 16 chars. */
-  walletID: string
-  /** BSV public address derived from mnemonic via BIP44 m/44'/0'/0'/0/0 */
+  /** BSV public address (primary identifier, blockchain-native) */
   publicAddress: string
   /** WIF-encoded private key — kept in session only, never persisted to disk */
   privateKey: string
@@ -40,55 +41,21 @@ export interface Wallet {
   mnemonic: string
   /** Current balance from blockchain */
   balance?: WalletBalance
+  /** Programs this wallet created (creator status via Create transactions on-chain) */
+  creatorPrograms?: any[]
+  /** Programs this wallet joined (participant status via nTangle/nProcess/Redeem transactions on-chain) */
+  participantPrograms?: any[]
   /** ISO timestamp of last activity */
   lastActiveAt?: string
   /** ISO timestamp of wallet creation */
   createdAt: string
 }
 
-// ============================================================================
-// Session
-// ============================================================================
-
+/**
+ * WalletSession: Active user session with wallet
+ */
 export interface WalletSession {
   wallet: Wallet
   sessionToken?: string
   expiresAt?: string
-}
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-/**
- * Create a default wallet data object.
- * walletID must always be provided — known at creation time.
- */
-export function createDefaultWalletData(
-  walletID: string,
-  publicAddress: string,
-  privateKey: string,
-  mnemonic: string
-): Wallet {
-  return {
-    walletID,
-    publicAddress,
-    privateKey,
-    mnemonic,
-    createdAt: new Date().toISOString(),
-  }
-}
-
-/**
- * Validate that a string conforms to the walletID format: wid_{12-char-base36}.
- */
-export function isValidWalletID(value: string): boolean {
-  return /^wid_[0-9a-z]{12}$/.test(value)
-}
-
-/**
- * Validate that a string conforms to the programID format: pid_{12-char-base36}.
- */
-export function isValidProgramID(value: string): boolean {
-  return /^pid_[0-9a-z]{12}$/.test(value)
 }

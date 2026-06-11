@@ -1,7 +1,9 @@
 /**
  * Storage Service
  * Abstracts localStorage access for all data persistence
- * Provides type-safe storage operations for programs, punch cards, and minterest
+ * Provides type-safe storage operations for programs and punch cards
+ * 
+ * All storage keys are keyed off publicAddress (wallet's blockchain identity)
  */
 
 import type { PunchCard } from "@/lib/types"
@@ -92,14 +94,20 @@ export function clearStorage(): boolean {
 }
 
 // ============================================================================
-// Punch Card Storage Operations
+// Punch Card Storage Operations (keyed by publicAddress)
 // ============================================================================
 
-export function getPunchCardsByCustomer(customerAddress: string): PunchCard[] {
+/**
+ * Get all punch cards for a wallet participant.
+ * Storage key: {PUNCH_CARDS}_{publicAddress}
+ * 
+ * @param publicAddress - Wallet's public address (blockchain identity)
+ */
+export function getPunchCardsByParticipant(publicAddress: string): PunchCard[] {
   if (!isBrowser) return []
   
   try {
-    const key = `${STORAGE_KEYS.PUNCH_CARDS}_${customerAddress}`
+    const key = `${STORAGE_KEYS.PUNCH_CARDS}_${publicAddress}`
     const data = localStorage.getItem(key)
     return data ? JSON.parse(data) : []
   } catch (error) {
@@ -109,7 +117,7 @@ export function getPunchCardsByCustomer(customerAddress: string): PunchCard[] {
 }
 
 /**
- * Get all punch cards from all customers (for analytics/counting)
+ * Get all punch cards from all participants (for analytics/counting)
  * Scans localStorage for all punch card keys
  */
 export function getAllPunchCards(): PunchCard[] {
@@ -143,12 +151,18 @@ export function getAllPunchCards(): PunchCard[] {
   }
 }
 
-export function savePunchCard(punchCard: PunchCard): boolean {
+/**
+ * Save or update a punch card
+ * @param punchCard - Punch card to save (must have publicAddress set)
+ * @param publicAddress - Participant's public address
+ * @returns true if successful
+ */
+export function savePunchCard(punchCard: PunchCard, publicAddress: string): boolean {
   if (!isBrowser) return false
 
   try {
-    const cards = getPunchCardsByCustomer(punchCard.customerAddress)
-    // Use programId as the unique key per customer (one card per program per customer)
+    const cards = getPunchCardsByParticipant(publicAddress)
+    // Use programId as the unique key per wallet (one card per program per wallet)
     const existingIndex = cards.findIndex(c => c.programId === punchCard.programId)
 
     if (existingIndex >= 0) {
@@ -157,7 +171,7 @@ export function savePunchCard(punchCard: PunchCard): boolean {
       cards.push(punchCard)
     }
 
-    const key = `${STORAGE_KEYS.PUNCH_CARDS}_${punchCard.customerAddress}`
+    const key = `${STORAGE_KEYS.PUNCH_CARDS}_${publicAddress}`
     localStorage.setItem(key, JSON.stringify(cards))
 
     return true
@@ -167,7 +181,44 @@ export function savePunchCard(punchCard: PunchCard): boolean {
   }
 }
 
-export function getPunchCardByProgramId(customerAddress: string, programId: string): PunchCard | null {
-  const cards = getPunchCardsByCustomer(customerAddress)
+/**
+ * Get a specific punch card by program ID
+ * @param publicAddress - Participant's public address
+ * @param programId - Program ID to find
+ * @returns Punch card or null if not found
+ */
+export function getPunchCardByProgramId(publicAddress: string, programId: string): PunchCard | null {
+  const cards = getPunchCardsByParticipant(publicAddress)
   return cards.find(c => c.programId === programId) || null
+}
+
+/**
+ * Delete a punch card
+ * @param publicAddress - Participant's public address
+ * @param programId - Program ID to delete
+ * @returns true if successful
+ */
+export function deletePunchCard(publicAddress: string, programId: string): boolean {
+  if (!isBrowser) return false
+
+  try {
+    const cards = getPunchCardsByParticipant(publicAddress)
+    const filtered = cards.filter(c => c.programId !== programId)
+    
+    if (filtered.length === cards.length) {
+      return false // Card not found
+    }
+
+    const key = `${STORAGE_KEYS.PUNCH_CARDS}_${publicAddress}`
+    if (filtered.length === 0) {
+      localStorage.removeItem(key)
+    } else {
+      localStorage.setItem(key, JSON.stringify(filtered))
+    }
+
+    return true
+  } catch (error) {
+    console.error("[Storage Service] Error deleting punch card:", error)
+    return false
+  }
 }

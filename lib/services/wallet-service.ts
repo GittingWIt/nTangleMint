@@ -1,22 +1,18 @@
 /**
  * Wallet Service
  *
- * Handles wallet session management, address derivation, and ID generation.
- * Uses bip39 for mnemonic generation and @bsv/sdk for key derivation.
+ * Handles wallet session management, address derivation, and mnemonic operations.
+ * Uses BIP39 for mnemonic generation and @bsv/sdk for BIP44 key derivation.
  *
- * ID FORMAT (fixed 16 chars, scalable to 36^12 ~4.7 trillion unique values):
- *   walletID:  wid_{12-char-base36}  e.g. wid_a1b2c3d4e5f6
- *   programID: pid_{12-char-base36}  e.g. pid_x9y8z7w6v5u4
- *
- * All wallets are unified with both user and creator capabilities.
- * Dashboard controls what features are visible, not wallet type.
+ * All wallets are unified with both creator and participant capabilities.
+ * Identity is blockchain-native (publicAddress derived from private key).
  */
 
 import type { Wallet, WalletBalance } from "@/lib/types/wallet"
 import { getNetworkMode, getAddressBalance, isValidAddress } from "./bsv-service"
 import { safeSessionStorage } from "@/lib/utils/browser"
 import * as bip39 from "bip39"
-import { HD, PrivateKey } from "@bsv/sdk"
+import { HD } from "@bsv/sdk"
 
 // ============================================================================
 // Constants
@@ -34,39 +30,20 @@ const BIP44_PATH = "m/44'/0'/0'/0/0"
 // ============================================================================
 
 /**
- * Internal utility: generates a fixed-length base36 random string of n characters.
- * Base36 = [0-9a-z], providing sufficient entropy with a compact, URL-safe format.
- */
-function randomBase36(length: number): string {
-  let result = ""
-  while (result.length < length) {
-    // Math.random() gives 0-1; converting to base36 gives variable length,
-    // so we slice and loop until we have exactly `length` characters.
-    result += Math.random().toString(36).substring(2)
-  }
-  return result.substring(0, length)
-}
-
-/**
- * Generate a unique wallet ID.
- * Format: wid_{12-char-base36} — fixed 16 chars total.
- * All wallets receive a walletID at creation.
- */
-export function generateWalletID(): string {
-  return `wid_${randomBase36(12)}`
-}
-
-/**
- * Generate a unique program ID.
- * Format: pid_{12-char-base36} — fixed 16 chars total.
- * Generated at program creation time; broadcast to blockchain at activation.
+ * Generate a unique Program ID in format: pid_{12-char-base36}
+ * Uses random base36 characters for immutable on-chain identification
  */
 export function generateProgramID(): string {
-  return `pid_${randomBase36(12)}`
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyz"
+  let id = ""
+  for (let i = 0; i < 12; i++) {
+    id += chars.charAt(Math.floor(Math.random() * 36))
+  }
+  return `pid_${id}`
 }
 
 // ============================================================================
-// Mnemonic
+// Mnemonic Generation & Validation
 // ============================================================================
 
 /**
@@ -91,6 +68,10 @@ export function validateMnemonic(mnemonic: string): boolean {
 /**
  * Derive a BSV address from a BIP39 mnemonic using BIP44 path m/44'/0'/0'/0/0.
  * Uses @bsv/sdk HD key derivation.
+ * 
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @param password - Optional password for additional security
+ * @returns BSV public address (blockchain identity)
  */
 export function deriveAddress(mnemonic: string, password: string = ""): string {
   if (!validateMnemonic(mnemonic)) {
@@ -112,23 +93,24 @@ export function deriveAddress(mnemonic: string, password: string = ""): string {
     throw new Error("Failed to derive child private key")
   }
 
-  const privKey = childKey.privKey
-  const address = privKey.toAddress(isTestnet ? [0x6f] : [0x00])
+  // childKey.privKey is already a PrivateKey object with toAddress() method
+  const address = childKey.privKey.toAddress(isTestnet ? [0x6f] : [0x00])
 
   return address.toString()
 }
 
 /**
- * Derive WIF-encoded private key from mnemonic using the same BIP44 path.
+ * Derive WIF-encoded private key from mnemonic using BIP44 path.
  * Used by transaction-service for signing transactions.
+ * 
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @param password - Optional password for additional security
+ * @returns WIF-encoded private key
  */
 export function getPrivKeyWif(mnemonic: string, password: string = ""): string {
   if (!validateMnemonic(mnemonic)) {
     throw new Error("Invalid mnemonic phrase")
   }
-
-  const networkMode = getNetworkMode()
-  const isTestnet = networkMode === "testnet"
 
   const seedBuffer = bip39.mnemonicToSeedSync(mnemonic, password)
   const seed = Array.from(seedBuffer)
@@ -139,6 +121,7 @@ export function getPrivKeyWif(mnemonic: string, password: string = ""): string {
     throw new Error("Failed to derive child private key")
   }
 
+  // The childKey.privKey is already a PrivateKey instance with toWif() method
   return childKey.privKey.toWif()
 }
 
@@ -148,6 +131,7 @@ export function getPrivKeyWif(mnemonic: string, password: string = ""): string {
 
 /**
  * Save wallet to session storage.
+ * Credentials are stored in memory only, never persisted to disk.
  */
 export function saveWallet(wallet: Wallet): void {
   safeSessionStorage.setJSON(WALLET_SESSION_KEY, wallet)
@@ -162,9 +146,12 @@ export function getCurrentWallet(): Wallet | null {
 
 /**
  * Clear wallet session (logout).
+ * Removes all wallet data from memory.
  */
 export function logout(): void {
   safeSessionStorage.removeItem(WALLET_SESSION_KEY)
+  safeSessionStorage.removeItem(MNEMONIC_TEMP_KEY)
+  safeSessionStorage.removeItem(PASSWORD_TEMP_KEY)
 }
 
 /**
@@ -182,11 +169,14 @@ export function getStoredPassword(): string {
 }
 
 // ============================================================================
-// Balance
+// Balance Management
 // ============================================================================
 
 /**
  * Refresh wallet balance from the blockchain and persist updated wallet to session.
+ * 
+ * @param wallet - Current wallet object
+ * @returns Updated wallet with latest balance
  */
 export async function refreshWalletBalance(wallet: Wallet): Promise<Wallet> {
   try {
@@ -211,9 +201,49 @@ export async function refreshWalletBalance(wallet: Wallet): Promise<Wallet> {
 
     saveWallet(updatedWallet)
     return updatedWallet
-  } catch {
+  } catch (error) {
+    console.error("[wallet-service] Error refreshing balance:", error)
     return wallet
   }
+}
+
+// ============================================================================
+// Program Recovery Integration
+// ============================================================================
+
+/**
+ * Populate wallet with creator and participant programs from blockchain.
+ * Used after wallet creation or restoration to sync on-chain program data.
+ * 
+ * @param wallet - Wallet to populate
+ * @returns Wallet with populated creator and participant programs
+ */
+export async function populateWalletPrograms(wallet: Wallet): Promise<Wallet> {
+  let creatorPrograms = wallet.creatorPrograms || []
+  let participantPrograms = wallet.participantPrograms || []
+
+  try {
+    const { getProgramsByCreatorOnChain } = await import("./onchain-state-service")
+    creatorPrograms = await getProgramsByCreatorOnChain(wallet.publicAddress)
+  } catch (error) {
+    console.warn("[populateWalletPrograms] Could not fetch creator programs:", error)
+  }
+
+  try {
+    const { getPunchCardsByParticipantOnChain } = await import("./onchain-state-service")
+    participantPrograms = await getPunchCardsByParticipantOnChain(wallet.publicAddress)
+  } catch (error) {
+    console.warn("[populateWalletPrograms] Could not fetch participant programs:", error)
+  }
+
+  const updatedWallet: Wallet = {
+    ...wallet,
+    creatorPrograms,
+    participantPrograms,
+  }
+
+  saveWallet(updatedWallet)
+  return updatedWallet
 }
 
 // ============================================================================

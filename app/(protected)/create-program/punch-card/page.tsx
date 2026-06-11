@@ -6,6 +6,9 @@ import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { useWallet } from "@/contexts/wallet-context"
+import { useToast } from "@/hooks/use-toast"
+import { useDraftPrograms } from "@/hooks/use-draft-programs"
+import '@/lib/debug/program-validator' // Expose validator to window for console access
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
@@ -16,10 +19,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, CheckCircle2, ArrowLeft, Zap, Target } from "lucide-react"
 import { getCurrentWallet } from "@/lib/services/wallet-service"
 import { getPrivKeyWif, getStoredMnemonic, getStoredPassword } from "@/lib/services/wallet-service"
-import { createProgram, PROGRAM_REGISTRATION_FEE } from "@/lib/services/program-service"
+import { createProgram, getProgramRegistrationFee } from "@/lib/services/program-service"
 import { getCachedBlockHeight } from "@/lib/services/block-height-service"
 import { getAddressBalance } from "@/lib/services/bsv-service"
-import { PROGRAM_DEFAULTS, BITCOIN_DUST_LIMIT } from "@/lib/constants"
+import { PROGRAM_DEFAULTS } from "@/lib/constants"
 import { satoshisToUsd, formatBsv } from "@/lib/utils/conversion"
 import Link from "next/link"
 
@@ -43,12 +46,19 @@ const formSchema = z.object({
     .refine(
       (val) => {
         const price = parseInt(val, 10)
-        return price >= BITCOIN_DUST_LIMIT
+        return !isNaN(price) && price > 0
       },
-      `Price must be at least ${BITCOIN_DUST_LIMIT} satoshis (Bitcoin dust limit)`
+      "Price per punch must be a positive number"
     ),
   expirationDate: z.string().refine(
-    (val) => new Date(val) > new Date(),
+    (val) => {
+      try {
+        const expDate = new Date(val)
+        return expDate > new Date()
+      } catch {
+        return false
+      }
+    },
     "Expiration date must be in the future"
   ),
   terms: z.string().optional(),
@@ -62,12 +72,15 @@ function getDefaultExpirationDate(): string {
 export default function CreatePunchCardPage() {
   const router = useRouter()
   const { wallet } = useWallet()
+  const { toast } = useToast()
+  const { addDraft } = useDraftPrograms()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [blockHeight, setBlockHeight] = useState(0)
   const [bsvBalance, setBsvBalance] = useState(0)
   const [balanceLoading, setBalanceLoading] = useState(true)
+  const [registrationFee, setRegistrationFee] = useState(1000) // Default, will be updated
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -82,7 +95,7 @@ export default function CreatePunchCardPage() {
     },
   })
 
-  // Fetch block height and balance on mount
+  // Fetch block height, balance, and registration fee on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -95,14 +108,32 @@ export default function CreatePunchCardPage() {
           return
         }
 
-        const [height, balanceData] = await Promise.all([
+        const [height, balanceData, regFee] = await Promise.all([
           getCachedBlockHeight(),
-          getAddressBalance(walletToUse.publicAddress)
+          getAddressBalance(walletToUse.publicAddress),
+          getProgramRegistrationFee()
         ])
         
         console.log("[v0] Balance fetched:", balanceData)
+        console.log("[v0] Registration fee:", regFee)
+        console.log("[v0] Block height:", height)
+        
         setBlockHeight(height)
         setBsvBalance(balanceData.total)
+        setRegistrationFee(regFee)
+        
+        // Expose validation helper to console
+        if (typeof window !== 'undefined') {
+          ;(window as any).__validationData = {
+            wallet: walletToUse,
+            blockHeight: height,
+            balance: balanceData,
+            registrationFee: regFee,
+            formData: form.getValues()
+          }
+          console.log('[v0] Validation data ready! In console, run:')
+          console.log('[v0] validateProgram(window.__validationData.wallet, window.__validationData.formData, window.__validationData.blockHeight, window.__validationData.balance, window.__validationData.registrationFee)')
+        }
       } catch (err) {
         console.error("[v0] Error fetching balance:", err)
       } finally {
@@ -125,8 +156,8 @@ export default function CreatePunchCardPage() {
       }
 
       // Check if merchant has sufficient balance for program registration
-      if (bsvBalance < PROGRAM_REGISTRATION_FEE) {
-        setError(`Insufficient BSV balance. You need at least ${formatBsv(PROGRAM_REGISTRATION_FEE)} BSV (~$${satoshisToUsd(PROGRAM_REGISTRATION_FEE)}) to register a program on-chain.`)
+      if (bsvBalance < registrationFee) {
+        setError(`Insufficient BSV balance. You need at least ${formatBsv(registrationFee)} BSV (~$${satoshisToUsd(registrationFee)}) to register a program on-chain.`)
         return
       }
 
@@ -147,28 +178,44 @@ export default function CreatePunchCardPage() {
         return
       }
 
-      // Create program locally (no blockchain broadcast yet)
+      // Create program as draft
       const program = createProgram(
-        walletToUse.walletID, // Pass walletID first
         walletToUse.publicAddress,
         {
           name: values.name,
           description: values.description,
           requiredPunches: Number.parseInt(values.requiredPunches, 10),
           reward: values.reward,
-          pricePerPunch: Number.parseInt(values.pricePerPunch, 10),
+          satoshisPerPunch: Number.parseInt(values.pricePerPunch, 10),
           expirationDays: calculateExpirationDays(values.expirationDate),
-          isPublic: true,
-          programType: values.requiredPunches === "1" ? "bogo" : "accumulation",
         }
       )
 
-      console.log("[v0] Program created locally (inactive):", program.id)
+      // Save as draft to localStorage
+      const draftProgram = addDraft({
+        ...program,
+        name: values.name,
+        type: 'loyalty_punch',
+        satoshisPerPunch: Number.parseInt(values.pricePerPunch, 10),
+        requiredPunches: Number.parseInt(values.requiredPunches, 10),
+        expirationDate: values.expirationDate,
+        termsConditions: values.terms || undefined,
+        registrationFee: registrationFee,
+        creatorAddress: walletToUse.publicAddress,
+        createdAt: Date.now()
+      })
+
+      console.log("[v0] Draft program saved to localStorage:", draftProgram.draftId)
+
+      toast({
+        title: "Draft Saved",
+        description: `Your program "${values.name}" has been saved as a draft. Review it in your Programs tab, then click Activate to broadcast to the blockchain.`
+      })
 
       setSuccess(true)
       setTimeout(() => {
-        router.push("/dashboard")
-      }, 1500)
+        router.push("/dashboard?tab=programs")
+      }, 2000)
     } catch (err) {
       console.error("[CreateProgram] Error:", err)
       setError(err instanceof Error ? err.message : "Failed to create program")
@@ -178,9 +225,16 @@ export default function CreatePunchCardPage() {
   }
 
   // Helper function to calculate days until expiration
+  // Note: Parse date as local date (not UTC) to match what the user selected
   const calculateExpirationDays = (expirationDate: string): number => {
-    const expDate = new Date(expirationDate)
+    // Split "YYYY-MM-DD" into components
+    const [year, month, day] = expirationDate.split('-').map(Number)
+    // Create date at midnight local time (not UTC)
+    const expDate = new Date(year, month - 1, day, 0, 0, 0)
+    // Get today at midnight local time
     const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    // Calculate difference in days
     const diffTime = expDate.getTime() - today.getTime()
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
   }
@@ -216,12 +270,12 @@ export default function CreatePunchCardPage() {
         </Link>
 
         {/* Balance Warning */}
-        {!balanceLoading && bsvBalance < PROGRAM_REGISTRATION_FEE && (
+        {!balanceLoading && bsvBalance < registrationFee && (
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Insufficient Balance</AlertTitle>
             <AlertDescription>
-              You need at least {formatBsv(PROGRAM_REGISTRATION_FEE)} BSV (~${satoshisToUsd(PROGRAM_REGISTRATION_FEE)}) to register a program on the blockchain. 
+              You need at least {formatBsv(registrationFee)} BSV (~${satoshisToUsd(registrationFee)}) to register a program on the blockchain. 
               Your current balance: {formatBsv(bsvBalance)} BSV. 
               Please fund your wallet to continue.
             </AlertDescription>
@@ -466,10 +520,10 @@ export default function CreatePunchCardPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isSubmitting || bsvBalance < PROGRAM_REGISTRATION_FEE}
+                    disabled={isSubmitting || bsvBalance < registrationFee}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
                   >
-                    {isSubmitting ? "Creating..." : bsvBalance < PROGRAM_REGISTRATION_FEE ? "Insufficient Balance" : "Create Program"}
+                    {isSubmitting ? "Creating..." : bsvBalance < registrationFee ? "Insufficient Balance" : "Create Program"}
                   </Button>
                 </div>
               </form>

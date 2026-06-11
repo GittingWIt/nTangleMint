@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { createPunchCard } from "@/lib/services/punchcard-service"
+import { nTangle } from "@/lib/services/punchcard-service"
 import { getCurrentWallet } from "@/lib/services/wallet-service"
 import type { Program } from "@/lib/types"
 import { Button } from "@/components/ui/button"
@@ -34,10 +34,10 @@ export function NTangleDialog({ program, isOpen, onClose, onSuccess, customerAdd
       return
     }
     
-    // Get the customer's wallet ID
+    // Get the creator wallet for blockchain identity
     const wallet = getCurrentWallet()
-    if (!wallet?.walletID) {
-      setError("Wallet ID not available. Please log in again.")
+    if (!wallet?.publicAddress) {
+      setError("Wallet address not available. Please log in again.")
       return
     }
     
@@ -45,8 +45,8 @@ export function NTangleDialog({ program, isOpen, onClose, onSuccess, customerAdd
     setError(null)
     try {
       console.log("[v0] Starting punch card creation for program:", program.id)
-      // createPunchCard is an alias for nTangle and requires customerWalletID
-      const newCard = await createPunchCard(program, customerAddress, wallet.walletID)
+      // nTangle creates a blockchain-backed punch card (Phase 6 native identity)
+      const newCard = await nTangle(program, customerAddress)
       console.log("[v0] Punch card created successfully with txId:", newCard.txId)
       onSuccess(newCard)
       onClose()

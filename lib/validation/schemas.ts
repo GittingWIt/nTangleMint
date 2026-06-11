@@ -1,15 +1,33 @@
 import { z } from 'zod'
 
 /**
- * Central Zod schemas for all validation
+ * Central Zod schemas for nTangleMint validation
  * Source of truth for data validation across the application
  * Used by both client-side forms and server-side validators
  */
 
 // ============================================
-// ADDRESS SCHEMAS
+// ID SCHEMAS - nTangleMint Format
 // ============================================
 
+/**
+ * Program ID format: pid_{12-char-base36}
+ * Total 16 characters. Fixed format for on-chain recovery.
+ */
+export const programIDSchema = z
+  .string()
+  .regex(/^pid_[0-9a-z]{12}$/, 'Invalid program ID format (must be pid_[0-9a-z]{12})')
+
+// ============================================
+// ADDRESS SCHEMAS - BSV Blockchain
+// ============================================
+
+/**
+ * BSV P2PKH Address format
+ * Validates Bitcoin Standard Visibility addresses (legacy format).
+ * Used for blockchain operations, balance checks, transaction signing.
+ * This is the universal wallet identifier in nTangleMint.
+ */
 export const BSVAddressSchema = z
   .string()
   .min(26, 'Invalid address length')
@@ -35,73 +53,180 @@ export const OptionalSatoshiSchema = z
   .max(2100000000000000)
   .optional()
 
+export const satoshisPerPunchSchema = z
+  .number()
+  .int('Satoshis must be an integer')
+  .min(100, 'Satoshis per punch must be at least 100')
+  .max(100000000, 'Satoshis per punch cannot exceed 1 BSV')
+
 // ============================================
 // PROGRAM SCHEMAS
 // ============================================
 
-export const ProgramCreationSchema = z.object({
+export const requiredPunchesSchema = z
+  .number()
+  .int('Required punches must be an integer')
+  .min(1, 'Required punches must be at least 1')
+  .max(1000, 'Required punches cannot exceed 1000')
+
+export const expirationDaysSchema = z
+  .number()
+  .int('Expiration days must be an integer')
+  .min(1, 'Expiration days must be at least 1')
+  .max(3650, 'Expiration days cannot exceed 10 years (3650 days)')
+
+export const rewardSchema = z
+  .string()
+  .min(1, 'Reward description required')
+  .max(200, 'Reward description cannot exceed 200 characters')
+
+/**
+ * nTangleMint Program Schema
+ * Creator identity is blockchain-native via creatorAddress (public address from TX signature)
+ */
+export const ProgramSchema = z.object({
+  id: programIDSchema,
+  creatorAddress: BSVAddressSchema.describe('BSV address of program creator (from TX signature)'),
   name: z
     .string()
     .min(3, 'Program name must be at least 3 characters')
-    .max(50, 'Program name must be less than 50 characters')
+    .max(100, 'Program name must be less than 100 characters')
     .trim(),
   description: z
     .string()
     .max(500, 'Description must be less than 500 characters')
     .optional(),
-  merchantAddress: BSVAddressSchema,
-  satoshisPerPunch: SatoshiAmountSchema,
-  requiredPunches: z
-    .number()
-    .int()
-    .min(1, 'Must require at least 1 punch')
-    .max(100, 'Cannot require more than 100 punches'),
-  programType: z.enum(['accumulation', 'bogo']),
-  bogoRewardDescription: z
-    .string()
-    .max(100, 'Reward description must be less than 100 characters')
+  status: z.enum(['active', 'paused', 'deleted']),
+  metadata: z
+    .object({
+      requiredPunches: requiredPunchesSchema.optional(),
+      expirationDays: expirationDaysSchema.optional(),
+      satoshisPerPunch: satoshisPerPunchSchema.optional(),
+      reward: rewardSchema.optional(),
+      expirationDate: z.string().datetime().optional(),
+    })
     .optional(),
 })
 
-export type ProgramCreationInput = z.infer<typeof ProgramCreationSchema>
+export type ProgramInput = z.infer<typeof ProgramSchema>
 
-export const ProgramMetadataSchema = z.object({
-  programType: z.enum(['accumulation', 'bogo']).optional(),
-  bogoRewardDescription: z.string().optional(),
+/**
+ * Program Creation Schema for NEW format
+ * creatorWalletID is NOT stored in OP_RETURN (identity derived from TX signature)
+ * programName is stored in database, NOT in OP_RETURN
+ */
+export const ProgramCreationSchema = z.object({
+  name: z
+    .string()
+    .min(3, 'Program name must be at least 3 characters')
+    .max(100, 'Program name must be less than 100 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(500, 'Description must be less than 500 characters')
+    .optional(),
+  satoshisPerPunch: satoshisPerPunchSchema,
+  requiredPunches: requiredPunchesSchema,
+  reward: rewardSchema,
+  expirationDays: expirationDaysSchema.optional(),
 })
+
+export type ProgramCreationInput = z.infer<typeof ProgramCreationSchema>
 
 // ============================================
 // PUNCH CARD SCHEMAS
 // ============================================
 
-export const PunchCardSchema = z.object({
-  id: z.string().uuid(),
-  programId: z.string(),
-  customerAddress: BSVAddressSchema,
-  punches: z.number().int().min(0),
-  requiredPunches: z.number().int().min(1),
-  status: z.enum(['active', 'completed']),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  completedAt: z.string().datetime().optional(),
+export const punchCountSchema = z
+  .number()
+  .int('Punch count must be an integer')
+  .min(0, 'Punch count cannot be negative')
+
+export const punchCardStatusSchema = z.enum(['active', 'redeemed'], {
+  errorMap: () => ({
+    message: "Invalid status. Must be 'active' or 'redeemed'",
+  }),
 })
 
+/**
+ * nTangleMint Punch Card Schema
+ * Participant identity is blockchain-native via participantAddress (public address from TX signature)
+ */
+export const PunchCardSchema = z.object({
+  txId: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid transaction ID (must be 64-char hex)'),
+  programId: programIDSchema,
+  participantAddress: BSVAddressSchema.describe('BSV address of punch card participant (from TX signature)'),
+  punches: punchCountSchema,
+  requiredPunches: requiredPunchesSchema,
+  reward: rewardSchema,
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  completionTxId: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid completion transaction ID').optional(),
+  redeemedAt: z.string().datetime().optional(),
+  status: punchCardStatusSchema,
+})
+
+export type PunchCardInput = z.infer<typeof PunchCardSchema>
+
+/**
+ * Punch Recording Schema for participant joining program
+ * Uses publicAddress (BSV address) for on-chain record
+ */
 export const PunchRecordingSchema = z.object({
-  customerAddress: BSVAddressSchema,
-  programId: z.string(),
+  publicAddress: BSVAddressSchema.describe('Your BSV address'),
+  programId: programIDSchema,
 })
 
 export type PunchRecordingInput = z.infer<typeof PunchRecordingSchema>
 
 // ============================================
+// TRANSACTION TYPE SCHEMAS
+// ============================================
+
+export const transactionTypeSchema = z.enum(
+  ['Create', 'nTangle', 'nProcess', 'Redeem', 'Delete'],
+  {
+    errorMap: () => ({
+      message: 'Invalid transaction type. Must be one of: Create, nTangle, nProcess, Redeem, Delete',
+    }),
+  }
+)
+
+export const programTypeSchema = z.enum(['PunchCard'], {
+  errorMap: () => ({
+    message: 'Invalid program type. Must be PunchCard',
+  }),
+})
+
+export const opReturnFieldSchema = z.string()
+
+/**
+ * Validates complete 14-field OP_RETURN structure (Field 4 removed).
+ * All nTangleMint transactions use this consistent 14-field structure.
+ */
+export const opReturnFieldsSchema = z
+  .array(opReturnFieldSchema)
+  .length(14, 'OP_RETURN must have exactly 14 fields (0-13)')
+
+// ============================================
 // WALLET SCHEMAS
 // ============================================
 
+/**
+ * Wallet Schema - blockchain-native identity via publicAddress
+ */
 export const WalletSchema = z.object({
-  address: BSVAddressSchema,
-  privateKey: z.string().min(64).max(64), // WIF format
-  publicKey: z.string(),
-  balance: z.number().int().min(0),
+  publicAddress: BSVAddressSchema.describe('BSV P2PKH address (primary wallet identifier)'),
+  privateKey: z.string().min(64).max(64),
+  mnemonic: z.string(),
+  balance: z
+    .object({
+      confirmed: z.number().int().min(0),
+      unconfirmed: z.number().int().min(0),
+      total: z.number().int().min(0),
+      address: BSVAddressSchema,
+    })
+    .optional(),
 })
 
 // ============================================

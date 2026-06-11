@@ -3,13 +3,12 @@
  *
  * Restores a wallet from a BIP39 mnemonic by:
  *   1. Validating the mnemonic format
- *   2. Deriving the address from the mnemonic
- *   3. Querying blockchain for WALLET OP_RETURN metadata (if available)
- *   4. Falling back to generated walletID if on-chain record not found
- *   5. Reconstructing the wallet object
+ *   2. Deriving the address and private key from the mnemonic using BIP44
+ *   3. Querying blockchain for programs this wallet created (creator status)
+ *   4. Querying blockchain for punch cards this wallet joined (participant status)
  *
- * Wallet restoration does NOT require on-chain metadata.
- * All users have unified wallets with both user and creator capabilities.
+ * All wallets are unified with both creator and participant capabilities.
+ * Identity is blockchain-native (derived from TX signature).
  */
 
 import type { Wallet } from "@/lib/types"
@@ -20,7 +19,6 @@ import {
   validateMnemonic,
   getPrivKeyWif,
   saveWallet,
-  generateWalletID,
 } from "./wallet-service"
 
 // ============================================================================
@@ -30,72 +28,62 @@ import {
 /**
  * Restore a wallet from a BIP39 mnemonic.
  *
- * Works with or without on-chain WALLET metadata.
- * The address is deterministically derived from the mnemonic.
+ * Uses BIP44 derivation path (m/44'/0'/0'/0/0) for BSV compatibility.
+ * Queries blockchain to populate creator programs and participant punch cards.
+ * Returns a fully functional Wallet object with all discovered programs.
  *
- * Returns a fully functional Wallet object that can be used immediately.
+ * @param mnemonic - BIP39 mnemonic phrase (12 words)
+ * @param password - Optional password for mnemonic encryption
+ * @returns Restored Wallet with creator and participant programs
  */
 export async function restoreWallet(
   mnemonic: string,
-  password: string,
+  password: string = "",
 ): Promise<Wallet> {
   // Validate mnemonic format
   if (!validateMnemonic(mnemonic)) {
     throw new Error("Invalid mnemonic phrase")
   }
 
-  // Derive address and private key from mnemonic
+  // Derive address and private key from mnemonic using BIP44
   const publicAddress = deriveAddress(mnemonic, password)
   const privateKey = getPrivKeyWif(mnemonic, password)
 
-  let walletID: string | undefined
-
-  // Try to fetch wallet metadata from blockchain (optional enhancement)
+  // Recover programs CREATED by this wallet (creator status)
+  let creatorPrograms: any[] = []
   try {
-    const { getWalletMetadataOnChain } = await import("./onchain-state-service")
-    const walletMetadata = await getWalletMetadataOnChain(publicAddress)
-    
-    if (walletMetadata?.walletID) {
-      walletID = walletMetadata.walletID
-    }
+    const { getProgramsByCreatorOnChain } = await import("./onchain-state-service")
+    creatorPrograms = await getProgramsByCreatorOnChain(publicAddress)
   } catch (error) {
-    // On-chain metadata lookup optional - wallet will restore with generated walletID
+    // Program recovery optional - wallet will function without recovered programs
+    console.warn("[restoreWallet] Could not fetch creator programs:", error)
   }
 
-  // Try to recover programs created by this wallet from blockchain
+  // Recover programs this wallet JOINED (participant status - punch cards)
+  let participantPrograms: any[] = []
   try {
-    const { getProgramsByWalletOnChain } = await import("./onchain-state-service")
-    const onChainPrograms = await getProgramsByWalletOnChain(publicAddress)
-    
-    if (onChainPrograms.length > 0) {
-      // Recover programs to local storage
-      const { recoverProgramsFromChain } = await import("./program-service")
-      await recoverProgramsFromChain(onChainPrograms, publicAddress)
-    }
+    const { getPunchCardsByParticipantOnChain } = await import("./onchain-state-service")
+    participantPrograms = await getPunchCardsByParticipantOnChain(publicAddress)
   } catch (error) {
-    // Program recovery optional - wallet will still function without recovered programs
-  }
-
-  // If on-chain metadata not found, generate new walletID
-  if (!walletID) {
-    walletID = generateWalletID()
-    console.log("[v0] Generated new walletID for restored wallet:", walletID)
+    // Participant program recovery optional
+    console.warn("[restoreWallet] Could not fetch participant programs:", error)
   }
 
   const now = new Date().toISOString()
 
-  // Fetch balance (non-blocking, defaults to zero if fetch fails)
+  // Fetch balance from blockchain (non-blocking, defaults to zero)
   const balance = await getAddressBalance(publicAddress).catch(() => null)
 
   // Reconstruct wallet object — unified structure for all users
   const wallet: Wallet = {
-    walletID,
     publicAddress,
     privateKey,
     mnemonic,
     balance: balance
       ? { address: publicAddress, ...balance }
       : { address: publicAddress, confirmed: 0, unconfirmed: 0, total: 0 },
+    creatorPrograms: creatorPrograms || [],
+    participantPrograms: participantPrograms || [],
     createdAt: now,
     lastActiveAt: now,
   }

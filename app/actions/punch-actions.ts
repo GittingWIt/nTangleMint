@@ -5,11 +5,11 @@ import { RATE_LIMITS } from '@/lib/constants/rate-limits'
 import { getClientId } from '@/lib/utils/get-client-id'
 import { addPunch, getPunchCard } from '@/lib/services/punchcard-service'
 import {
-  validatePunchRecording,
-  validatePunchComplete,
-} from '@/lib/validation/punch-validator'
+  validatePunchCard,
+} from '@/lib/validation/punchcard-validator'
 import { validateProgramForPunch } from '@/lib/validation/program-validator'
-import { validateWalletBalanceForPunch } from '@/lib/validation/wallet-validator'
+import { validateBalance, validateOperationCapacity } from '@/lib/validation/wallet-validator'
+import { getAddressBalance } from '@/lib/services/bsv-service'
 import { validateBlockchainStateBeforePunch } from '@/lib/validation/blockchain-state-validator'
 import type { PunchCard } from '@/lib/types'
 import type { Program } from '@/lib/types'
@@ -40,12 +40,19 @@ export async function recordPunchAction(
   try {
     // STEP 1: Validate input data
     console.log('[v0] [PunchAction] Step 1: Validating input data')
-    const inputValidation = validatePunchRecording({ customerAddress, programId })
-    if (!inputValidation.valid) {
-      console.warn('[v0] [PunchAction] Input validation failed:', inputValidation.errors)
+    
+    // Validate address format
+    if (!customerAddress || customerAddress.length === 0) {
       return {
         success: false,
-        error: `Invalid input: ${inputValidation.errors?.join('; ')}`,
+        error: 'Customer address is required',
+      }
+    }
+    
+    if (!programId || programId.length === 0) {
+      return {
+        success: false,
+        error: 'Program ID is required',
       }
     }
 
@@ -75,16 +82,32 @@ export async function recordPunchAction(
     }
 
     // STEP 4: Validate wallet has sufficient balance
+    // For punching, the cost is the satoshisPerPunch amount from the program
     console.log('[v0] [PunchAction] Step 4: Checking wallet balance')
-    const walletValidation = await validateWalletBalanceForPunch(customerAddress, program)
-    if (!walletValidation.valid) {
-      console.warn('[v0] [PunchAction] Wallet validation failed:', walletValidation.errors)
+    
+    const punchCost = program.metadata?.satoshisPerPunch || 0
+    
+    try {
+      const balanceData = await getAddressBalance(customerAddress)
+      const walletBalance = balanceData.total
+      
+      const balanceValidation = validateOperationCapacity(walletBalance, punchCost)
+      if (!balanceValidation.valid) {
+        console.warn('[v0] [PunchAction] Wallet balance insufficient:', balanceValidation.errors)
+        return {
+          success: false,
+          error: `Insufficient wallet balance for punch: ${balanceValidation.errors?.join('; ')}`,
+        }
+      }
+      
+      console.log('[v0] [PunchAction] Wallet balance check passed. Balance:', walletBalance, 'Punch cost:', punchCost)
+    } catch (balanceError) {
+      console.error('[v0] [PunchAction] Error checking wallet balance:', balanceError)
       return {
         success: false,
-        error: `Wallet check failed: ${walletValidation.errors?.join('; ')}`,
+        error: 'Unable to verify wallet balance. Please try again.',
       }
     }
-    console.log('[v0] [PunchAction] Wallet balance check passed. Available:', walletValidation.balance)
 
     // STEP 5: Verify blockchain state before punch
     console.log('[v0] [PunchAction] Step 5: Verifying blockchain state')
@@ -97,24 +120,8 @@ export async function recordPunchAction(
       }
     }
 
-    // STEP 6: Complete validation (cross-field)
-    console.log('[v0] [PunchAction] Step 6: Running complete punch validation')
-    const completeValidation = validatePunchComplete({
-      card,
-      program,
-      customerAddress,
-      merchantAddress: program.merchantAddress,
-    })
-    if (!completeValidation.valid) {
-      console.warn('[v0] [PunchAction] Complete validation failed:', completeValidation.errors)
-      return {
-        success: false,
-        error: `Validation failed: ${completeValidation.errors?.join('; ')}`,
-      }
-    }
-
-    // STEP 7: Rate limiting check
-    console.log('[v0] [PunchAction] Step 7: Checking rate limit')
+    // STEP 6: Proceed with punch recording
+    console.log('[v0] [PunchAction] Step 6: Recording punch on blockchain')
     const clientId = await getClientId()
     const rateLimitKey = `punch:${clientId}:${programId}`
     const rateLimitConfig = RATE_LIMITS.HIGH
@@ -153,7 +160,7 @@ export async function recordPunchAction(
     }
 
     console.log('[v0] [PunchAction] Punch recorded successfully:', {
-      cardId: result.id,
+      transactionId: result.txId,
       punches: result.punches,
       status: result.status,
     })
@@ -179,52 +186,69 @@ export async function recordPunchAction(
 }
 
 /**
- * Server action to create a program (merchant-side)
- * Includes rate limiting to prevent spam program creation
- * 
- * Rate limit: 5 programs per 5 minutes per merchant
+ * Server action to redeem a completed punch card
+ * Only callable after required punches are met
  */
-export async function createProgramAction(programData: any): Promise<PunchActionResult> {
+export async function redeemPunchCardAction(
+  customerAddress: string,
+  programId: string
+): Promise<PunchActionResult> {
   try {
-    const clientId = getClientId()
-    const rateLimitKey = `program:create:${clientId}`
-    const rateLimitConfig = RATE_LIMITS.HIGH
-    
-    console.log('[v0] [CreateProgramAction] Checking rate limit for:', rateLimitKey)
-    
+    console.log('[v0] [PunchAction] Redeeming punch card for', { customerAddress, programId })
+
+    const clientId = await getClientId()
+    const rateLimitKey = `redeem:${clientId}:${customerAddress}`
+    const rateLimitConfig = RATE_LIMITS.MEDIUM
+
     const rateLimitResult = await rateLimiter(
       rateLimitKey,
       rateLimitConfig.maxRequests,
       rateLimitConfig.windowMs
     )
-    
+
     if (!rateLimitResult.allowed) {
-      console.warn('[v0] [CreateProgramAction] Rate limit exceeded')
-      
+      console.warn('[v0] [PunchAction] Rate limit exceeded for:', rateLimitKey)
       return {
         success: false,
-        error: 'Too many program creation attempts. Please wait before trying again.',
-        rateLimitInfo: {
-          remaining: rateLimitResult.remaining,
-          resetTime: rateLimitResult.resetTime,
-          retryAfter: Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000),
-        },
+        error: 'Too many redemption attempts. Please wait before trying again.',
       }
     }
-    
-    console.log('[v0] [CreateProgramAction] Rate limit check passed')
-    
-    // TODO: Implement actual program creation logic
-    // This is a placeholder for the future program creation endpoint
-    
+
+    // Get the punch card
+    const card = getPunchCard(customerAddress, programId)
+    if (!card) {
+      return {
+        success: false,
+        error: 'Punch card not found',
+      }
+    }
+
+    // Verify the card is complete and eligible for redemption
+    if (card.status !== 'active' || card.punches < card.program.requiredPunches) {
+      return {
+        success: false,
+        error: 'Punch card is not ready for redemption',
+      }
+    }
+
+    // Mark as redeemed in local state
+    card.status = 'redeemed'
+    card.redeemedAt = new Date().toISOString()
+
+    console.log('[v0] [PunchAction] Punch card redeemed successfully:', {
+      customerAddress,
+      programId,
+      txId: card.txId,
+    })
+
     return {
-      success: false,
-      error: 'Program creation not yet implemented in server action',
+      success: true,
+      data: card,
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create program'
-    console.error('[v0] [CreateProgramAction] Error creating program:', error)
-    
+    const message = error instanceof Error ? error.message : 'Failed to redeem punch card'
+    console.error('[v0] [PunchAction] Error redeeming punch card:', error)
+
     return {
       success: false,
       error: message,

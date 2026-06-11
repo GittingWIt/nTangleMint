@@ -155,8 +155,8 @@ const cacheService = new CacheService()
 /**
  * Build cache key for wallet metadata queries
  */
-export function getCacheKeyWallet(address: string): string {
-  return `wallet:${address}`
+export function getCacheKeyWallet(publicAddress: string): string {
+  return `wallet:${publicAddress}`
 }
 
 /**
@@ -167,13 +167,29 @@ export function getCacheKeyProgram(programId: string): string {
 }
 
 /**
+ * Build cache key for programs created by a specific creator address
+ * Used to cache all programs where this address is the creator
+ */
+export function getCacheKeyCreatorPrograms(creatorAddress: string): string {
+  return `creator-programs:${creatorAddress}`
+}
+
+/**
+ * Build cache key for programs a participant is enrolled in
+ * Used to cache all punch cards for this participant address
+ */
+export function getCacheKeyParticipantPrograms(participantAddress: string): string {
+  return `participant-programs:${participantAddress}`
+}
+
+/**
  * Build cache key for punch card queries
  */
 export function getCacheKeyPunchCard(
   programId: string,
-  customerAddress: string
+  participantAddress: string
 ): string {
-  return `punchcard:${programId}:${customerAddress}`
+  return `punchcard:${programId}:${participantAddress}`
 }
 
 /**
@@ -202,6 +218,56 @@ export const CACHE_TTL = {
 
   /** Program data rarely changes - cache for 1 hour */
   PROGRAM: 60 * 60 * 1000,
+}
+
+// ============================================================================
+// Cache Invalidation Functions
+// ============================================================================
+
+/**
+ * Invalidate all cache entries for a specific program
+ * Called when a program is created, updated, or deleted
+ */
+export function invalidateProgramCache(programId: string): void {
+  cacheService.clearByPattern(`program:${programId}`)
+}
+
+/**
+ * Invalidate creator program cache when programs are created/updated/deleted
+ * Called when a creator modifies their programs
+ */
+export function invalidateCreatorProgramsCache(creatorAddress: string): void {
+  cacheService.clearByPattern(`creator-programs:${creatorAddress}`)
+  cacheService.clearByPattern(`program:`) // Also clear individual program caches that might be affected
+}
+
+/**
+ * Invalidate participant program cache when a participant joins/leaves programs
+ * Called when a participant creates or redeems punch cards
+ */
+export function invalidateParticipantProgramsCache(participantAddress: string): void {
+  cacheService.clearByPattern(`participant-programs:${participantAddress}`)
+  cacheService.clearByPattern(`punchcard:`) // Also clear individual punch card caches
+}
+
+/**
+ * Invalidate punch card cache for a specific card
+ * Called when punch card state changes (punch added, redeemed, etc.)
+ */
+export function invalidatePunchCardCache(programId: string, participantAddress: string): void {
+  cacheService.clearByPattern(`punchcard:${programId}:${participantAddress}`)
+}
+
+/**
+ * Invalidate all wallet-related cache
+ * Called when wallet is refreshed or balance updates
+ */
+export function invalidateWalletCache(publicAddress: string): void {
+  cacheService.clearByPattern(`wallet:${publicAddress}`)
+  cacheService.clearByPattern(`balance:${publicAddress}`)
+  cacheService.clearByPattern(`creator-programs:${publicAddress}`)
+  cacheService.clearByPattern(`participant-programs:${publicAddress}`)
+  cacheService.clearByPattern(`punchcard:`) // Clear all punch cards for this participant
 }
 
 // ============================================================================

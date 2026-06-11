@@ -4,83 +4,95 @@ import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import type { Program } from "@/lib/types"
-import { getProgramById, updateProgram, programHasActivePunches } from "@/lib/services/program-service"
+import { useDraftPrograms, type DraftProgram } from "@/hooks/use-draft-programs"
+import { useToast } from "@/hooks/use-toast"
+import { getProgramMetadataById } from "@/lib/services/program-service"
 import { getCurrentWallet } from "@/lib/services/wallet-service"
-import { BITCOIN_DUST_LIMIT } from "@/lib/constants"
+import { getActivePunchCards } from "@/lib/services/punchcard-service"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { ArrowLeft, AlertCircle } from "lucide-react"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-
-const editFormSchema = z.object({
-  name: z.string().min(3, "Program name must be at least 3 characters"),
-  description: z.string().min(10, "Description must be at least 10 characters"),
-  reward: z.string().min(3, "Reward description is required"),
-  pricePerPunch: z.string().optional(),
-  requiredPunches: z.string().optional(),
-  expirationDate: z.string().optional(),
-})
-
-type EditFormValues = z.infer<typeof editFormSchema>
+import { ArrowLeft, AlertCircle, InfoIcon } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function EditProgramPage() {
   const params = useParams()
   const router = useRouter()
   const programId = params.id as string
+  const { getDraft, updateDraft } = useDraftPrograms()
+  const { toast } = useToast()
 
-  const [program, setProgram] = useState<Program | null>(null)
+  const [program, setProgram] = useState<any>(null)
+  const [isDraft, setIsDraft] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
   const [hasActivePunches, setHasActivePunches] = useState(false)
-  const [updateError, setUpdateError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+
+  // Editable fields (metadata that can be updated locally before broadcast)
+  const [programName, setProgramName] = useState("")
+  const [programDescription, setDescription] = useState("")
+  const [reward, setReward] = useState("")
+  const [requiredPunches, setRequiredPunches] = useState("")
+  const [satoshisPerPunch, setSatoshisPerPunch] = useState("")
+  const [expirationDate, setExpirationDate] = useState("")
 
   const merchant = getCurrentWallet()
-  const merchantAddress = merchant?.address || ""
-
-  const form = useForm<EditFormValues>({
-    resolver: zodResolver(editFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      reward: "",
-      pricePerPunch: "",
-      requiredPunches: "",
-      expirationDate: "",
-    },
-  })
+  const creatorAddress = merchant?.publicAddress || ""
 
   useEffect(() => {
     const fetchProgram = async () => {
       try {
-        const foundProgram = getProgramById(programId)
-        if (!foundProgram) {
+        // First check if this is a draft program
+        const draftProgram = getDraft(programId)
+        
+        if (draftProgram) {
+          setProgram(draftProgram)
+          setIsDraft(true)
+          setProgramName(draftProgram.name || "")
+          setDescription(draftProgram.description || "")
+          setReward(draftProgram.reward || "")
+          setRequiredPunches(String(draftProgram.requiredPunches || ""))
+          setSatoshisPerPunch(String((draftProgram.data as Record<string, any>)?.satoshisPerPunch || ""))
+          setExpirationDate(draftProgram.expirationDays?.toString() || "")
+          setLoading(false)
+          return
+        }
+
+        // Otherwise load from blockchain
+        const programMeta = getProgramMetadataById(programId)
+        if (!programMeta) {
           setError("Program not found")
           setLoading(false)
           return
         }
 
-        setProgram(foundProgram)
+        setProgram(programMeta)
+        setIsDraft(false)
+        
+        // Initialize editable fields from metadata
+        setProgramName(programMeta.name || "")
+        setDescription(programMeta.description || "")
+        setReward(programMeta.reward || "")
+        setRequiredPunches(String(programMeta.requiredPunches || ""))
+        setSatoshisPerPunch(String((programMeta.data as Record<string, any>)?.satoshisPerPunch || ""))
+        setExpirationDate(programMeta.expirationDays?.toString() || "")
 
-        // Check if program has active punches
-        const hasActive = programHasActivePunches(programId)
+        // Check if program has active punch cards (program economics are immutable if it does)
+        const activePunches = getActivePunchCards(creatorAddress)
+        const hasActive = activePunches.some(card => card.programId === programId)
         setHasActivePunches(hasActive)
-
-        // Set form values
-        form.reset({
-          name: foundProgram.name,
-          description: foundProgram.description,
-          reward: foundProgram.rewardDescription || "",
-          pricePerPunch: String(foundProgram.metadata?.satoshisPerPunch || ""),
-          requiredPunches: String(foundProgram.requiredPunches || ""),
-          expirationDate: foundProgram.expiration?.estimatedExpirationDate?.split("T")[0] || "",
-        })
 
         setLoading(false)
       } catch (err) {
@@ -91,69 +103,69 @@ export default function EditProgramPage() {
     }
 
     fetchProgram()
-  }, [programId, form])
+  }, [programId, creatorAddress, getDraft])
 
-  const onSubmit = async (values: EditFormValues) => {
-    setUpdateError(null)
-    setSaving(true)
-
+  const handleSave = async () => {
     try {
-      const pricePerPunch = values.pricePerPunch ? parseInt(values.pricePerPunch) : undefined
-      const requiredPunches = values.requiredPunches ? parseInt(values.requiredPunches) : undefined
-
-      // Validate price if being changed
-      if (pricePerPunch !== undefined && pricePerPunch > 0 && pricePerPunch < BITCOIN_DUST_LIMIT) {
-        setUpdateError(`Price must be at least ${BITCOIN_DUST_LIMIT} satoshis`)
-        setSaving(false)
-        return
-      }
-
-      // Build update object based on whether punches exist
-      const updateData: any = {
-        name: values.name,
-        description: values.description,
-        rewardDescription: values.reward,
-      }
-
-      // Only allow editing price, punches, and expiration if no active punches
-      if (!hasActivePunches) {
-        if (pricePerPunch !== undefined && pricePerPunch > 0) {
-          updateData.metadata = {
-            ...program?.metadata,
-            satoshisPerPunch: pricePerPunch,
-          }
-        }
-        if (requiredPunches !== undefined && requiredPunches > 0) {
-          updateData.requiredPunches = requiredPunches
-        }
-        if (values.expirationDate) {
-          const newExpiration = new Date(values.expirationDate)
-          if (newExpiration > new Date()) {
-            updateData.expiration = {
-              ...program?.expiration,
-              estimatedExpirationDate: newExpiration.toISOString(),
-            }
-          } else {
-            setUpdateError("Expiration date must be in the future")
-            setSaving(false)
-            return
-          }
+      setIsSaving(true)
+      
+      // For drafts, update in localStorage
+      if (isDraft && program.draftId) {
+        const updated = updateDraft(program.draftId, {
+          name: programName,
+          description: programDescription,
+          reward: reward,
+          requiredPunches: parseInt(requiredPunches, 10) || 0,
+          expirationDays: parseInt(expirationDate, 10) || 365,
+          data: {
+            ...(program.data || {}),
+            satoshisPerPunch: parseInt(satoshisPerPunch, 10) || 0,
+          },
+        })
+        
+        if (updated) {
+          toast({
+            title: "Draft Updated",
+            description: "Your draft has been saved. You can now activate it."
+          })
+          setShowConfirmDialog(false)
+          setTimeout(() => {
+            router.push("/dashboard?tab=programs")
+          }, 1000)
+          return
         }
       }
+      
+      // For blockchain programs, validate that details won't change on-chain
+      // Metadata can be updated locally, but economics are immutable once broadcast
+      const updatedProgram = {
+        ...program,
+        programName,
+        description: programDescription,
+        reward,
+      }
 
-      const updated = updateProgram(programId, merchantAddress, updateData)
-
-      if (updated) {
+      setProgram(updatedProgram)
+      
+      // Show confirmation that changes are stored locally until broadcast
+      setShowConfirmDialog(false)
+      
+      // After a short delay, redirect back to program
+      setTimeout(() => {
         router.push(`/programs/${programId}`)
-      } else {
-        setUpdateError("Failed to update program")
-      }
+      }, 1000)
     } catch (err) {
-      console.error("Error updating program:", err)
-      setUpdateError(err instanceof Error ? err.message : "Failed to update program")
+      console.error("Error saving program:", err)
+      setError("Error saving program details")
     } finally {
-      setSaving(false)
+      setIsSaving(false)
     }
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    // Show confirmation dialog before saving
+    setShowConfirmDialog(true)
   }
 
   if (loading) {
@@ -191,152 +203,169 @@ export default function EditProgramPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Edit Program</CardTitle>
-          <CardDescription>Update your loyalty program details</CardDescription>
+          <CardTitle>Edit Program Details</CardTitle>
+          <CardDescription>
+            Update your program metadata. Changes are stored locally until you broadcast to blockchain.
+          </CardDescription>
+          
           {hasActivePunches && (
             <Alert className="mt-4 border-amber-200 bg-amber-50">
               <AlertCircle className="h-4 w-4 text-amber-600" />
               <AlertDescription className="text-amber-800">
-                This program has active punch cards. You can only edit the program name, description, and reward description. Price per punch and number of punches are locked to maintain fairness.
+                This program has active punch cards. Economics (price per punch, required punches) cannot be edited. Only metadata (name, description, reward) can be updated.
               </AlertDescription>
             </Alert>
           )}
+
+          <Alert className="mt-4 border-blue-200 bg-blue-50">
+            <InfoIcon className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800">
+              <strong>Important:</strong> Once you broadcast this program to the blockchain, all details become immutable. You will be asked to confirm all details before activation to ensure accuracy.
+            </AlertDescription>
+          </Alert>
         </CardHeader>
 
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {updateError && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{updateError}</AlertDescription>
-                </Alert>
-              )}
-
-              {/* Always Editable Fields */}
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Program Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Program name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Program Name - Always Editable */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Program Name</label>
+              <Input
+                value={programName}
+                onChange={(e) => setProgramName(e.target.value)}
+                placeholder="Your program name"
+                className="mt-2"
+                required
               />
+              <p className="text-xs text-muted-foreground mt-1">Visible on-chain after broadcast</p>
+            </div>
 
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Program Description</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Describe your program" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            {/* Description - Always Editable */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Description</label>
+              <Textarea
+                value={programDescription}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe your loyalty program"
+                className="mt-2 min-h-24"
               />
+              <p className="text-xs text-muted-foreground mt-1">Help customers understand your program</p>
+            </div>
 
-              <FormField
-                control={form.control}
-                name="reward"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reward Description</FormLabel>
-                    <FormControl>
-                      <Input placeholder="What customers will receive" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            {/* Reward Description - Always Editable */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Reward Description</label>
+              <Input
+                value={reward}
+                onChange={(e) => setReward(e.target.value)}
+                placeholder="What customers will receive"
+                className="mt-2"
+                required
               />
+              <p className="text-xs text-muted-foreground mt-1">Displayed to customers on-chain</p>
+            </div>
 
-              {/* Conditionally Editable Fields - Only if no active punches */}
-              {!hasActivePunches && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="pricePerPunch"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Satoshis Per Punch</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Amount in satoshis" {...field} />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Minimum {BITCOIN_DUST_LIMIT} satoshis per punch
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {/* Required Punches - Editable Until Broadcast */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Required Punches</label>
+              <Input
+                type="number"
+                value={requiredPunches}
+                onChange={(e) => setRequiredPunches(e.target.value)}
+                placeholder="Number of punches required"
+                className="mt-2"
+                min="1"
+                disabled={hasActivePunches}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {hasActivePunches ? "Locked: This program has active punch cards" : "Can be edited before broadcast"}
+              </p>
+            </div>
 
-                  <FormField
-                    control={form.control}
-                    name="requiredPunches"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Number of Punches Required</FormLabel>
-                        <FormControl>
-                          <Input type="number" placeholder="Number of punches" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {/* Satoshis Per Punch - Editable Until Broadcast */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Satoshis Per Punch</label>
+              <Input
+                type="number"
+                value={satoshisPerPunch}
+                onChange={(e) => setSatoshisPerPunch(e.target.value)}
+                placeholder="Cost per punch in satoshis"
+                className="mt-2"
+                min="1"
+                disabled={hasActivePunches}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {hasActivePunches ? "Locked: This program has active punch cards" : "Cost per punch in satoshis"}
+              </p>
+            </div>
 
-                  <FormField
-                    control={form.control}
-                    name="expirationDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Expiration Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
+            {/* Expiration Date - Editable Until Broadcast */}
+            <div>
+              <label className="text-sm font-medium text-foreground">Expiration Date</label>
+              <Input
+                type="date"
+                value={expirationDate}
+                onChange={(e) => setExpirationDate(e.target.value)}
+                className="mt-2"
+                required
+              />
+              <p className="text-xs text-muted-foreground mt-1">When this program expires and rewards can no longer be earned</p>
+            </div>
 
-              {hasActivePunches && (
-                <div className="space-y-3 p-4 bg-slate-50 rounded-lg border">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Satoshis Per Punch</p>
-                    <p className="text-base font-semibold">{program.metadata?.satoshisPerPunch || "N/A"}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Read-only (program has active punch cards)</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Required Punches</p>
-                    <p className="text-base font-semibold">{program.requiredPunches}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Read-only (program has active punch cards)</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push(`/programs/${programId}`)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            </form>
-          </Form>
+            <div className="flex gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.push("/dashboard?tab=programs")}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog - Before Changes Become Immutable */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Program Details</AlertDialogTitle>
+            <AlertDialogDescription>
+              These details will be stored locally and become immutable once broadcast to the blockchain. Please verify everything is correct.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-3 py-4 bg-slate-50 p-4 rounded-lg border">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Program Name</p>
+              <p className="text-sm font-medium text-foreground mt-1">{programName}</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Reward</p>
+              <p className="text-sm font-medium text-foreground mt-1">{reward}</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase">Creator Address</p>
+              <p className="text-xs font-mono text-foreground mt-1 break-all">{program.creatorAddress}</p>
+            </div>
+          </div>
+
+          <Alert className="border-blue-200 bg-blue-50">
+            <InfoIcon className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-xs text-blue-800">
+              You can broadcast this program to the blockchain at any time from your dashboard. Once broadcast, all details become immutable.
+            </AlertDescription>
+          </Alert>
+
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleSave}>Save & Continue</AlertDialogAction>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -62,11 +62,12 @@ export function ProgramCard({
 }: ProgramCardProps) {
   const [isToggling, setIsToggling] = useState(false)
 
-  // Extract program data
-  const totalPunchBlocks = program.metadata?.requiredPunches || 6
-  const rewardDescription = program.metadata?.reward || "Free reward"
-  const expirationDate = program.metadata?.expirationDate
-  const isExpired = expirationDate ? new Date(expirationDate) <= new Date() : false
+  // Extract program data from OnChainProgram fields
+  const totalPunchBlocks = program.requiredPunches || 6
+  const rewardDescription = program.reward || "Reward"
+  const satoshisPerPunch = (program.data as Record<string, any>)?.satoshisPerPunch || 0
+  const expirationDate = program.expirationDays ? new Date(Date.now() + (program.expirationDays * 24 * 60 * 60 * 1000)).toISOString() : null
+  const isExpired = program.expirationDays ? program.expirationDays <= 0 : false
 
   const layout = calculateGridLayout(totalPunchBlocks)
 
@@ -93,7 +94,7 @@ export function ProgramCard({
           {Array.from({ length: totalPunchBlocks }).map((_, i) => {
             const isFirst = i === 0
             const isLast = i === totalPunchBlocks - 1
-            const currentPunches = program.punchCard?.punches || 0
+            const currentPunches = punchCard?.punches || 0
             const isFilled = i < currentPunches
             
             return (

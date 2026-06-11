@@ -15,6 +15,16 @@ export function generateId(prefix = ""): string {
 }
 
 /**
+ * Generate a program ID with pid_ prefix and 12-character base36
+ */
+export function generateProgramId(): string {
+  // Create 12-character base36 string from random and timestamp
+  const random = Math.random().toString(36).substring(2, 8) // 6 chars
+  const timestamp = Date.now().toString(36).substring(0, 6) // 6 chars
+  return `pid_${random}${timestamp}`
+}
+
+/**
  * Format currency for USD
  */
 export function formatCurrency(amount: number): string {

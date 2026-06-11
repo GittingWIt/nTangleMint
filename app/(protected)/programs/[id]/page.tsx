@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import type { Program } from "@/lib/types"
-import { getProgramById } from "@/lib/services/program-service"
-import { getProgramParticipantsOnChain } from "@/lib/services/onchain-state-service"
+import { getProgramMetadataById } from "@/lib/services/program-service"
+import { getProgramParticipantCountOnChain } from "@/lib/services/onchain-state-service"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -27,24 +27,45 @@ export default function ProgramDetailsPage() {
   useEffect(() => {
     const fetchProgram = async () => {
       try {
-        // Load program from storage
-        const foundProgram = getProgramById(programId)
+        // Load program metadata from local cache
+        const programMeta = getProgramMetadataById(programId)
 
-        if (!foundProgram) {
+        if (!programMeta) {
           setError("Program not found")
           setLoading(false)
           return
         }
 
-        setProgram(foundProgram)
+        // Convert metadata to Program type for display
+        // In Phase 6, programs are blockchain-native with immutable metadata
+        const program: any = {
+          id: programMeta.programId,
+          name: programMeta.programName,
+          creatorAddress: programMeta.creatorAddress,
+          type: "punch-card",
+          description: "",
+          requiredPunches: 0,
+          reward: "",
+          expirationDays: 365,
+          metadata: {},
+          status: "active",
+          participantCount: 0,
+          createdAt: "",
+          updatedAt: "",
+          registrationTxid: "",
+          isPublic: true,
+          participants: [],
+        }
 
-        // Fetch on-chain participant data
+        setProgram(program)
+
+        // Fetch on-chain participant count
         setParticipantsLoading(true)
         try {
-          const onChainData = await getProgramParticipantsOnChain(programId)
-          setParticipantCount(onChainData.uniqueCustomers.size)
+          const count = await getProgramParticipantCountOnChain(programId)
+          setParticipantCount(count)
         } catch (err) {
-          console.error("Failed to fetch on-chain participants:", err)
+          console.error("Failed to fetch on-chain participant count:", err)
           setParticipantCount(0)
         } finally {
           setParticipantsLoading(false)
@@ -175,8 +196,8 @@ export default function ProgramDetailsPage() {
                 <p className="text-xs font-mono text-muted-foreground break-all">{program.id}</p>
               </div>
               <div>
-                <h4 className="text-sm font-medium text-muted-foreground mb-1">Merchant</h4>
-                <p className="text-xs font-mono text-muted-foreground break-all">{program.merchantAddress}</p>
+                <h4 className="text-sm font-medium text-muted-foreground mb-1">Creator Address</h4>
+                <p className="text-xs font-mono text-muted-foreground break-all">{program.creatorAddress}</p>
               </div>
               <div>
                 <h4 className="text-sm font-medium text-muted-foreground mb-1">Status</h4>

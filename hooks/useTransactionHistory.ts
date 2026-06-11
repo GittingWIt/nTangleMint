@@ -4,7 +4,7 @@ import useSWR from "swr"
 interface Transaction {
   txId: string
   timestamp: number
-  type: "nTangled" | "nProcess" | "nRedeemed" | "faucet"
+  type: "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete"
   amount: number
   programName?: string
   programId?: string
@@ -13,12 +13,16 @@ interface Transaction {
 }
 
 export function useTransactionHistory(address: string | null) {
+  console.log("[v0] useTransactionHistory called with address:", address)
+  
   const { data, error, isLoading } = useSWR(
     address ? `/api/external/transactions?address=${address}` : null,
     async (url) => {
+      console.log("[v0] useTransactionHistory fetching from:", url)
       const response = await fetch(url)
       if (!response.ok) throw new Error("Failed to fetch transactions")
       const data = await response.json()
+      console.log("[v0] useTransactionHistory response:", data)
       return data.transactions || []
     },
     {
@@ -39,14 +43,16 @@ export function useTransactionHistory(address: string | null) {
 
 export function formatTransactionType(type: string): string {
   switch (type) {
-    case "nTangled":
-      return "Punch Card Created"
+    case "Create":
+      return "Create"
+    case "nTangle":
+      return "nTangle"
     case "nProcess":
-      return "Punch Added"
-    case "nRedeemed":
-      return "Reward Redeemed"
-    case "faucet":
-      return "Deposit"
+      return "nProcess"
+    case "Redeem":
+      return "Redeem"
+    case "Delete":
+      return "Delete"
     default:
       return "Transaction"
   }
@@ -54,22 +60,21 @@ export function formatTransactionType(type: string): string {
 
 export function formatTransactionAmount(satoshis: number, type: string): string {
   const bsv = satoshis / 100_000_000
-  if (type === "faucet" || type === "nTangled") {
-    return `+${bsv.toFixed(8)} BSV`
-  }
   return `${bsv.toFixed(8)} BSV`
 }
 
 export function getTransactionColor(type: string): string {
   switch (type) {
-    case "nTangled":
-      return "text-blue-600"
+    case "Create":
+      return "text-red-600" // Debit - registration cost
+    case "nTangle":
+      return "text-green-600" // Credit - customer payment
     case "nProcess":
-      return "text-green-600"
-    case "nRedeemed":
-      return "text-purple-600"
-    case "faucet":
-      return "text-emerald-600"
+      return "text-green-600" // Credit - customer payment
+    case "Redeem":
+      return "text-blue-600" // Neutral - net 0 for creator
+    case "Delete":
+      return "text-red-600" // Debit - program deletion
     default:
       return "text-gray-600"
   }

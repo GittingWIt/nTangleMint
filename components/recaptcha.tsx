@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useCallback, useEffect } from "react"
+import { useRef, useCallback, useEffect, useState } from "react"
 import ReCAPTCHA from "react-google-recaptcha"
 
 interface ReCaptchaProps {
@@ -12,43 +12,52 @@ interface ReCaptchaProps {
 /**
  * ReCAPTCHA v2 component for human verification
  * Wraps Google reCAPTCHA with consistent styling and error handling
+ * In development mode (no NEXT_PUBLIC_RECAPTCHA_SITE_KEY), auto-verifies with a bypass token
  */
 export function ReCaptcha({ onVerify, onExpired, onError }: ReCaptchaProps) {
   const recaptchaRef = useRef<ReCAPTCHA>(null)
+  const [verified, setVerified] = useState(false)
   const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
 
   const handleChange = useCallback(
     (token: string | null) => {
+      if (token) {
+        setVerified(true)
+      }
       onVerify(token)
     },
     [onVerify]
   )
 
   const handleExpired = useCallback(() => {
+    setVerified(false)
     onVerify(null)
     onExpired?.()
   }, [onVerify, onExpired])
 
   const handleError = useCallback(() => {
+    setVerified(false)
     onVerify(null)
     onError?.()
   }, [onVerify, onError])
 
-  // If no site key, allow in development/preview for testing
-  if (!siteKey) {
-    if (process.env.NODE_ENV === "development") {
-      // In development, auto-verify to allow testing without reCAPTCHA
-      // This will still require verification in production
-      useEffect(() => {
-        onVerify("dev-bypass-token")
-      }, [onVerify])
-      return (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-          reCAPTCHA disabled (development mode) - verification bypassed for testing
-        </div>
-      )
+  // Development bypass: auto-verify if no site key is configured
+  // Fires on component mount and triggers immediately
+  useEffect(() => {
+    if (!siteKey && !verified) {
+      console.log("[v0] ReCaptcha: No site key detected, enabling dev bypass")
+      const devToken = "dev-bypass-token"
+      onVerify(devToken)
+      setVerified(true)
     }
-    return null
+  }, [siteKey, verified, onVerify])
+
+  if (!siteKey) {
+    return (
+      <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
+        reCAPTCHA disabled (development mode) - verification bypassed for testing
+      </div>
+    )
   }
 
   return (

@@ -1,6 +1,7 @@
-// nTangleMint OP_RETURN Format Version
-// Increment this when adding new fields to OP_RETURN records
-// Allows backward compatibility: parsers can handle v1, v2, etc.
+// nTangleMint OP_RETURN Format - Phase 7 Architecture
+// Core field structure (Fields 0-4) defined in lib/constants/core-field-positions.ts & core-schema.ts
+// Program-type-specific structure (Fields 5-8) defined in lib/constants/punchcard-field-positions.ts & punchcard-schema.ts
+// Supports extensibility for new program types (Loyalty, Coupon) without core changes
 export const NTANGLEMINT_FORMAT_VERSION = "v1"
 
 // Bitcoin dust limit - minimum output value to be spendable
@@ -51,8 +52,42 @@ export const API_ENDPOINTS = {
   TRANSACTIONS: "/api/transactions",
 } as const
 
-// Program types
+// ============================================================================
+// Program & Transaction Types - nTangleMint OP_RETURN Format
+// ============================================================================
+
+/**
+ * Program Types - First field in OP_RETURN (Field 1)
+ * Identifies the class/category of program (extensible for future types)
+ * Used in blockchain records for program classification
+ */
 export const PROGRAM_TYPES = {
+  PUNCH_CARD: "PunchCard",
+  // Future types: COUPON, LOYALTY, SUBSCRIPTION, etc.
+} as const
+
+export type ProgramType = typeof PROGRAM_TYPES[keyof typeof PROGRAM_TYPES]
+
+/**
+ * Transaction Types - Second field in OP_RETURN (Field 2)
+ * Identifies the specific action being recorded on blockchain
+ * Used with Program Type to determine OP_RETURN field structure
+ */
+export const TRANSACTION_TYPES = {
+  CREATE: "Create",       // Program registration / card creation
+  NTANGLE: "nTangle",     // First punch / participant joins
+  NPROCESS: "nProcess",   // Subsequent punch / accumulation
+  REDEEM: "Redeem",       // Final punch / reward claim
+  DELETE: "Delete",       // Program deletion / removal
+} as const
+
+export type TransactionType = typeof TRANSACTION_TYPES[keyof typeof TRANSACTION_TYPES]
+
+/**
+ * Legacy application-level program types (for UI/UX differentiation)
+ * These are NOT stored in OP_RETURN - kept separate for app logic
+ */
+export const APPLICATION_PROGRAM_TYPES = {
   COUPON_BOOK: "coupon-book",
   PUNCH_CARD: "punch-card",
   POINTS: "points",

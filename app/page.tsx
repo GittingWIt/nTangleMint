@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation"
 import type { Program, PunchCard, ProgramCardDisplay } from "@/lib/types"
 import { useWallet } from "@/contexts/wallet-context"
 import { getCachedBlockHeight } from "@/lib/services/block-height-service"
-import { getAllPrograms } from "@/lib/services/program-service"
-import { getParticipantCountOnChain } from "@/lib/services/onchain-state-service"
-import { getPunchCardByProgramId } from "@/lib/services/punchcard-service"
+import { getProgramsByCreatorOnChain } from "@/lib/services/onchain-state-service"
+import { getCreatorPrograms } from "@/lib/services/program-service"
+import { getPunchCardByProgramId } from "@/lib/services/storage-service"
 import { ProgramCard } from "@/components/program-card"
 import { NTangleDialog } from "@/components/punch-card/ntangle-dialog"
 import { Button } from "@/components/ui/button"
@@ -23,10 +23,16 @@ export default function LandingPage() {
   const [isHydrated, setIsHydrated] = useState(false)
   const [showUpcoming, setShowUpcoming] = useState(false)
   const [programs, setPrograms] = useState<Program[]>([])
+  const [allPublicPrograms, setAllPublicPrograms] = useState<Program[]>([])
   const [programParticipants, setProgramParticipants] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [selectedProgramForJoin, setSelectedProgramForJoin] = useState<Program | null>(null)
   const [isNTangleDialogOpen, setIsNTangleDialogOpen] = useState(false)
+
+  const handleManageProgram = (program: Program) => {
+    // Navigate to dashboard to manage the program
+    window.location.href = "/dashboard"
+  }
 
   const handleJoinProgram = (program: Program) => {
     if (!wallet?.publicAddress) {
@@ -42,10 +48,8 @@ export default function LandingPage() {
     console.log("[v0] Punch card created successfully, refreshing programs")
     
     // Refresh the programs list to show updated participant counts
-    const allPrograms = getAllPrograms()
-    setPrograms(allPrograms)
-    
-    setIsNTangleDialogOpen(false)
+    // Re-fetch from on-chain to get latest state
+    setLoading(true)
   }
 
   const handleNTangleClose = () => {
@@ -53,43 +57,44 @@ export default function LandingPage() {
     setSelectedProgramForJoin(null)
   }
 
-  // Load programs and participant counts on component mount and when wallet changes
+  // Load programs from blockchain on component mount
   useEffect(() => {
     setIsHydrated(true)
 
-    // Load block height
-    getCachedBlockHeight()
-      .then(setCurrentBlockHeight)
-      .catch(console.error)
+    const loadPrograms = async () => {
+      try {
+        const height = await getCachedBlockHeight()
+        setCurrentBlockHeight(height)
 
-    // Load programs from storage
-    const allPrograms = getAllPrograms()
-    setPrograms(allPrograms)
-
-    // Fetch on-chain participant counts for all programs
-    const fetchParticipantCounts = async () => {
-      const counts = new Map<string, number>()
-      for (const program of allPrograms) {
-        try {
-          const count = await getParticipantCountOnChain(program.id)
-          counts.set(program.id, count)
-        } catch (error) {
-          console.error(`Failed to fetch participant count for program ${program.id}:`, error)
-          counts.set(program.id, 0)
+        // Load ALL active programs from blockchain for Browse section
+        const response = await fetch(`/api/external/onchain-state?type=CREATE`)
+        if (!response.ok) {
+          throw new Error("Failed to fetch programs from blockchain")
         }
+
+        const data = await response.json()
+        const allPrograms = data.transactions || []
+        setAllPublicPrograms(allPrograms)
+
+        // For authenticated users: get their specific programs
+        if (wallet?.publicAddress) {
+          const userPrograms = await getCreatorPrograms(wallet.publicAddress)
+          setPrograms(userPrograms)
+        } else {
+          // Non-authenticated users: show empty for their programs
+          setPrograms([])
+        }
+      } catch (error) {
+        console.error("[v0] Failed to load programs:", error)
+        setPrograms([])
+        setAllPublicPrograms([])
+      } finally {
+        setLoading(false)
       }
-      setProgramParticipants(counts)
-      setLoading(false)
     }
 
-    fetchParticipantCounts()
-
-    // Refresh participant counts every 30 seconds to catch new joins
-    const refreshInterval = setInterval(fetchParticipantCounts, 30000)
-
-    // Cleanup interval on unmount
-    return () => clearInterval(refreshInterval)
-  }, [wallet])
+    loadPrograms()
+  }, [wallet?.publicAddress])
 
 
 
@@ -128,7 +133,7 @@ export default function LandingPage() {
       isMinterested: false,
       isJoined,
       punchCard: isJoined ? punchCard : undefined,
-      canManage: wallet?.publicAddress === program.merchantAddress,
+      canManage: wallet?.publicAddress === program.creatorAddress,
     }
   })
 
@@ -231,16 +236,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Programs Section */}
-      {filteredPrograms.length > 0 && (
+      {/* Browse Programs Section - Show all public programs */}
+      {isHydrated && allPublicPrograms.length > 0 && (
         <section className="py-20 md:py-28">
           <div className="container mx-auto px-4">
             <div className="mb-12">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
                 <div>
-                  <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">Active Programs</h2>
+                  <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">Browse Programs</h2>
                   <p className="text-muted-foreground">
-                    Join these loyalty programs and start earning rewards
+                    Discover active loyalty programs and earn rewards
                   </p>
                 </div>
                 
@@ -260,16 +265,110 @@ export default function LandingPage() {
 
             {/* Programs Grid */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {programDisplays.map((display) => (
-                <ProgramCard
-                  key={display.program.id}
-                  program={display.program}
-                  canManage={display.canManage}
-                  isJoined={display.isJoined}
-                  punchCard={display.punchCard}
-                  onJoin={() => handleJoinProgram(display.program)}
-                />
-              ))}
+              {allPublicPrograms
+                .filter((p) => {
+                  if (p.status !== "active") return false
+                  const programName = p.name || ""
+                  const programDescription = p.description || ""
+                  return (
+                    programName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    programDescription.toLowerCase().includes(searchQuery.toLowerCase())
+                  )
+                })
+                .map((program) => {
+                  const isOwner = wallet?.publicAddress === program.creatorAddress
+                  let punchCard: PunchCard | undefined = undefined
+                  let isJoined = false
+                  if (wallet) {
+                    punchCard = getPunchCardByProgramId(wallet.publicAddress, program.id) ?? undefined
+                    isJoined = punchCard !== undefined && punchCard.punches > 0
+                  }
+
+                  return (
+                    <div key={program.id} className="relative">
+                      {isOwner && (
+                        <div className="absolute -top-3 -right-3 z-10">
+                          <span className="inline-flex items-center rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                            Managed
+                          </span>
+                        </div>
+                      )}
+                      <ProgramCard
+                        program={program}
+                        canManage={isOwner}
+                        isJoined={isJoined}
+                        punchCard={punchCard}
+                        onJoin={() => handleJoinProgram(program)}
+                        onManage={() => handleManageProgram(program)}
+                      />
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Programs Section - Show user's programs if authenticated */}
+      {isHydrated && wallet && filteredPrograms.length > 0 && (
+        <section className="py-20 md:py-28 bg-muted/30">
+          <div className="container mx-auto px-4">
+            <div className="mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">Active Programs</h2>
+              <p className="text-muted-foreground">
+                Explore and join loyalty programs to start earning rewards
+              </p>
+            </div>
+
+            {/* Programs Grid */}
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {programDisplays.map((display) => {
+                const isOwner = display.canManage
+                
+                return (
+                  <div key={display.program.id} className="relative">
+                    {isOwner && (
+                      <div className="absolute -top-3 -right-3 z-10">
+                        <span className="inline-flex items-center rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                          Your Program
+                        </span>
+                      </div>
+                    )}
+                    <ProgramCard
+                      program={display.program}
+                      canManage={display.canManage}
+                      isJoined={display.isJoined}
+                      punchCard={display.punchCard}
+                      onJoin={() => handleJoinProgram(display.program)}
+                      onManage={() => handleManageProgram(display.program)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Empty State & Create CTA */}
+      {isHydrated && wallet && filteredPrograms.length === 0 && !loading && (
+        <section className="py-20 md:py-28 bg-muted/30">
+          <div className="container mx-auto px-4">
+            <div className="max-w-3xl mx-auto text-center">
+              <div className="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                <Gift className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">No Active Programs Yet</h2>
+              <p className="text-lg text-muted-foreground mb-8">
+                Create your first loyalty program and start building customer loyalty on the blockchain
+              </p>
+              
+              <Link href="/dashboard">
+                <Button size="lg" className="gap-2 bg-primary hover:bg-primary/90">
+                  Go to Dashboard
+                  <ArrowRight className="w-5 h-5" />
+                </Button>
+              </Link>
             </div>
           </div>
         </section>

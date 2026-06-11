@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { WalletData } from "@/lib/types"
+import type { Wallet } from "@/lib/types"
 
 // Define Program type inline until we establish the correct shared location
 type ProgramType = "punch-card" | "points" | "tiered" | "coalition"
@@ -22,12 +22,12 @@ interface ExtendedProgram {
 
 interface ProgramsListProps {
   programs: ExtendedProgram[]
-  walletData: WalletData | null
+  wallet: Wallet | null
   joinedPrograms: string[]
   onJoinProgram: (program: ExtendedProgram) => void
 }
 
-export default function ProgramsList({ programs, walletData, joinedPrograms, onJoinProgram }: ProgramsListProps) {
+export default function ProgramsList({ programs, wallet, joinedPrograms, onJoinProgram }: ProgramsListProps) {
   if (programs.length === 0) {
     return (
       <Alert>
@@ -48,7 +48,7 @@ export default function ProgramsList({ programs, walletData, joinedPrograms, onJ
             <p className="text-sm">{program.description}</p>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">{program.participants.length} participants</span>
-              {walletData?.type !== "merchant" && walletData?.type !== "unknown" && (
+              {wallet?.publicAddress && (
                 <Button
                   variant={joinedPrograms.includes(program.id) ? "secondary" : "default"}
                   onClick={() => onJoinProgram(program)}

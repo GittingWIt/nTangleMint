@@ -1,17 +1,35 @@
 import { NextRequest, NextResponse } from "next/server"
 import { handleCORSPreflight, withCORSHeaders } from "@/lib/middleware/cors"
+import { parseNTangleMintOpReturn, getTransactionType, getProgramID, extractFieldsData } from "@/lib/utils/parsers/opreturn-parser"
+import { CORE_FIELD_POSITIONS } from "@/lib/constants/core-field-positions"
+import { PUNCHCARD_FIELD_POSITIONS } from "@/lib/constants/punchcard-field-positions"
 
-export const OPTIONS = handleCORSPreflight
+export async function OPTIONS(request: NextRequest) {
+  return handleCORSPreflight(request)
+}
 
 interface Transaction {
   txId: string
   timestamp: number
-  type: "nTangled" | "nProcess" | "nRedeemed" | "faucet"
+  type: "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete"
   amount: number
   programName?: string
   programId?: string
   status: "confirmed" | "pending"
   blockHeight?: number
+}
+
+/**
+ * Calculate transaction amount
+ * NOTE: WhatsOnChain coinbase transactions don't provide input values,
+ * so we cannot reliably calculate fees from the transaction data alone.
+ * For now, we return 0 and display transactions without fees.
+ */
+function calculateTransactionAmount(txHash: string, txData: any): number {
+  // For these Create transactions (coinbase based), we don't have reliable input data
+  // to calculate fees. Setting amount to 0.
+  console.log(`[API-TRANSACTIONS] ${txHash} - coinbase transaction, setting amount=0`)
+  return 0
 }
 
 /**
@@ -44,7 +62,7 @@ export async function GET(request: NextRequest) {
       ? "https://api.whatsonchain.com/v1/bsv/main"
       : "https://api.whatsonchain.com/v1/bsv/test"
 
-    console.log(`[API-TRANSACTIONS] Fetching transactions for ${address}`)
+    console.log(`[API-TRANSACTIONS] Fetching transactions for ${address} on ${networkMode}`)
 
     // Fetch transaction history from WhatsOnChain
     const txHistoryUrl = `${apiUrl}/address/${address}/history`
@@ -64,99 +82,100 @@ export async function GET(request: NextRequest) {
     const txHistory = await historyResponse.json()
     const transactions: Transaction[] = []
 
+    if (!Array.isArray(txHistory)) {
+      console.warn(`[API-TRANSACTIONS] No transactions found`)
+      return NextResponse.json({ transactions: [], address, count: 0 })
+    }
+
+    console.log(`[API-TRANSACTIONS] Processing ${txHistory.length} transactions from history`)
+
     // Process each transaction
-    if (Array.isArray(txHistory)) {
-      for (const tx of txHistory) {
-        console.log(`[API-TRANSACTIONS] Processing tx ${tx.tx_hash}`)
-        
-        // Fetch full transaction details to check OP_RETURN data
-        const txDetailsUrl = `${apiUrl}/tx/${tx.tx_hash}`
-        const txResponse = await fetch(txDetailsUrl, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" }
-        })
+    for (const tx of txHistory) {
+      console.log(`[API-TRANSACTIONS][DEBUG] Processing tx: ${tx.tx_hash}`)
+      
+      // Fetch full transaction details
+      const txDetailsUrl = `${apiUrl}/tx/${tx.tx_hash}`
+      const txResponse = await fetch(txDetailsUrl, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+      })
 
-        if (!txResponse.ok) {
-          console.warn(`[API-TRANSACTIONS] Failed to fetch tx details for ${tx.tx_hash}`)
-          continue
-        }
+      if (!txResponse.ok) {
+        console.warn(`[API-TRANSACTIONS] Failed to fetch tx ${tx.tx_hash}: ${txResponse.status}`)
+        continue
+      }
 
-        const txData = await txResponse.json()
-        
-        // Check if this is an nTangle transaction (has OP_RETURN with nTangleMint)
-        if (txData.vout && Array.isArray(txData.vout)) {
-          for (const output of txData.vout) {
-            if (output.scriptPubKey?.opReturn) {
-              const opReturn = output.scriptPubKey.opReturn
-              
-              // Check if this is an nTangle transaction
-              if (opReturn.includes("nTangleMint")) {
-                // Parse the OP_RETURN data
-                const parts = opReturn.split("|")
-                const txType = parts[1]?.trim() // nTangled, nProcess, nRedeemed
-                const programId = parts[2]?.trim()
-                
-                // For now, get program name from the programId or use generic name
-                let programName = "nTangle Program"
-                if (programId) {
-                  // Could look up program name from context
-                  programName = `Program ${programId.substring(0, 8)}...`
-                }
-                
-                // Calculate the amount from inputs/outputs
-                let amount = 0
-                if (txData.vin && Array.isArray(txData.vin)) {
-                  amount = txData.vin.reduce((sum: number, input: any) => sum + (input.value || 0), 0)
-                }
-
-                console.log(`[API-TRANSACTIONS] nTangle tx ${tx.tx_hash} type: ${txType}, amount: ${amount}`)
-
-                transactions.push({
-                  txId: tx.tx_hash,
-                  timestamp: tx.time || Date.now() / 1000,
-                  type: (txType === "nTangled" || txType === "nProcess" || txType === "nRedeemed") ? txType : "faucet",
-                  amount,
-                  programName,
-                  programId,
-                  status: tx.confirmations && tx.confirmations > 0 ? "confirmed" : "pending",
-                  blockHeight: tx.height
-                })
-              }
-            }
+      const txData = await txResponse.json()
+      console.log(`[API-TRANSACTIONS][DEBUG] Fetched tx data, vout=${Array.isArray(txData.vout) ? txData.vout.length : 0}`)
+      if (txData.vout && txData.vout[0]) {
+        const vout0 = txData.vout[0]
+        console.log(`[API-TRANSACTIONS][DEBUG] vout[0].scriptPubKey.opReturn type: ${typeof vout0.scriptPubKey?.opReturn}`)
+        if (vout0.scriptPubKey?.opReturn) {
+          console.log(`[API-TRANSACTIONS][DEBUG] opReturn.parts: ${Array.isArray(vout0.scriptPubKey.opReturn.parts) ? vout0.scriptPubKey.opReturn.parts.length + ' items' : 'not array'}`)
+          if (Array.isArray(vout0.scriptPubKey.opReturn.parts) && vout0.scriptPubKey.opReturn.parts[0]) {
+            const sample = vout0.scriptPubKey.opReturn.parts[0].substring(0, 100)
+            console.log(`[API-TRANSACTIONS][DEBUG] parts[0] first 100 chars: "${sample}"`)
           }
-        }
-
-        // If no OP_RETURN found, this is a faucet transaction
-        if (transactions.find(t => t.txId === tx.tx_hash) === undefined) {
-          let amount = 0
-          // For faucet/funding transactions, sum all outputs (money coming in)
-          if (txData.vout && Array.isArray(txData.vout)) {
-            for (const output of txData.vout) {
-              // Skip OP_RETURN outputs
-              if (!output.scriptPubKey?.opReturn) {
-                amount += output.value || 0
-              }
-            }
-          }
-
-          console.log(`[API-TRANSACTIONS] Faucet tx ${tx.tx_hash} amount: ${amount}`)
-
-          transactions.push({
-            txId: tx.tx_hash,
-            timestamp: tx.time || Date.now() / 1000,
-            type: "faucet",
-            amount,
-            status: tx.confirmations && tx.confirmations > 0 ? "confirmed" : "pending",
-            blockHeight: tx.height
-          })
         }
       }
+
+      // Parse OP_RETURN data using shared parser
+      const parseResult = parseNTangleMintOpReturn(txData)
+      console.log(`[API-TRANSACTIONS][DEBUG] Parse result valid=${parseResult.valid}, transactionType=${parseResult.transactionType}`)
+      if (!parseResult.valid && parseResult.errors) {
+        console.log(`[API-TRANSACTIONS][DEBUG] Parse errors: ${JSON.stringify(parseResult.errors)}`)
+      }
+      
+      if (!parseResult.valid) {
+        console.log(`[API-TRANSACTIONS] ${tx.tx_hash} - not an nTangleMint transaction`)
+        continue
+      }
+
+      // Extract fields from parsed result
+      const programId = getProgramID(parseResult.fields)
+      const transactionType = getTransactionType(parseResult.fields)
+      const fieldsData = extractFieldsData(parseResult.fields)
+      
+      console.log(`[API-TRANSACTIONS][DEBUG] Extracted: programId=${programId}, type=${transactionType}, fieldsData=${fieldsData ? 'found' : 'not found'}`)
+      
+      if (!fieldsData) {
+        console.error(`[API-TRANSACTIONS] ${tx.tx_hash} - failed to extract fields data`)
+        continue
+      }
+
+      const programName = fieldsData.programName || "Unknown Program"
+      console.log(`[API-TRANSACTIONS][DEBUG] programName=${programName}`)
+
+      // Validate required fields
+      if (!programName || !transactionType) {
+        console.error(`[API-TRANSACTIONS] ${tx.tx_hash} - missing required parsed fields`)
+        continue
+      }
+
+      // Calculate amount
+      const amount = calculateTransactionAmount(tx.tx_hash, txData)
+
+      // Create transaction record
+      const transaction: Transaction = {
+        txId: tx.tx_hash,
+        timestamp: tx.time || Date.now() / 1000,
+        type: transactionType as "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete",
+        amount,
+        programName,
+        ...(programId && { programId }),
+        status: (tx.confirmations && tx.confirmations > 0) ? "confirmed" : "pending",
+        blockHeight: tx.height
+      }
+
+      transactions.push(transaction)
+      
+      console.log(`[API-TRANSACTIONS] Added: ${tx.tx_hash}, type=${transaction.type}, program=${transaction.programName}, amount=${transaction.amount} sat`)
     }
 
     // Sort by timestamp descending (most recent first)
     transactions.sort((a, b) => b.timestamp - a.timestamp)
 
-    console.log(`[API-TRANSACTIONS] Found ${transactions.length} transactions`)
+    console.log(`[API-TRANSACTIONS] Found ${transactions.length} valid nTangleMint format transactions`)
 
     const response = NextResponse.json({
       transactions,
@@ -164,11 +183,15 @@ export async function GET(request: NextRequest) {
       count: transactions.length
     })
 
-    return withCORSHeaders(response, request)
+    return withCORSHeaders(response, request);
   } catch (error) {
-    console.error(`[API-TRANSACTIONS] Error:`, error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : ""
+    console.error(`[API-TRANSACTIONS] FATAL ERROR: ${errorMessage}`)
+    console.error(`[API-TRANSACTIONS] Stack: ${errorStack}`)
+    
     const errorResponse = NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: errorMessage },
       { status: 500 }
     )
     return withCORSHeaders(errorResponse, request)

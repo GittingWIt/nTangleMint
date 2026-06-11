@@ -41,12 +41,12 @@ export function PunchCardComponent({
   }))
 
   const statusLabel = status === "active" ? TERMINOLOGY.NPROCESS : 
-                      status === "completed" ? "Ready to Redeem" :
-                      status === "redeemed" ? TERMINOLOGY.REDEEMED : "Expired"
+                      status === "redeemed" ? "Ready to Redeem" :
+                      status === "expired" ? "Expired" : "Unknown"
 
   const statusVariant = status === "active" ? "default" :
-                        status === "completed" ? "secondary" :
-                        status === "redeemed" ? "outline" : "destructive"
+                        status === "redeemed" ? "secondary" :
+                        status === "expired" ? "destructive" : "outline"
 
   return (
     <div
@@ -61,7 +61,7 @@ export function PunchCardComponent({
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-card-foreground truncate">{program.name}</h3>
           <p className="text-xs text-muted-foreground truncate">
-            {program.metadata.merchantName || "Local Business"}
+            {program.metadata?.creatorName || program.metadata?.programName || "Business"}
           </p>
         </div>
         {showStatus && (
