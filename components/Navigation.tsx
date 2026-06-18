@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter, usePathname } from "next/navigation"
-import { Copy, LogOut, Check, LayoutGrid, Package, Zap, Settings, Info } from "lucide-react"
+import { Copy, LogOut, Check, LayoutGrid, Package, Zap, Settings, Info, ShoppingCart } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useWallet } from "@/contexts/wallet-context"
 import Link from "next/link"
@@ -142,6 +142,16 @@ export default function Navigation() {
                   >
                     <Zap className="h-4 w-4" />
                     Punch Cards
+                  </Button>
+                </Link>
+
+                <Link href="/trade-block">
+                  <Button
+                    variant={pathname === "/trade-block" ? "default" : "ghost"}
+                    className="w-full justify-start gap-2"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    Trade Block
                   </Button>
                 </Link>
               </div>

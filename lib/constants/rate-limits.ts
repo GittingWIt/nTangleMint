@@ -57,6 +57,7 @@ export const RATE_LIMITS = {
   HIGH: HIGH_LIMITS,
   MEDIUM: MEDIUM_LIMITS,
   LOW: LOW_LIMITS,
+  marketplace: HIGH_LIMITS, // Same as HIGH: listing/delisting/buying are transaction-heavy
 };
 
 /**

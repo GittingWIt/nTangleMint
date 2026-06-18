@@ -17,7 +17,7 @@
  * NOT stored in OP_RETURN. Full program metadata stored in database.
  */
 
-import { sendTransaction } from "./transaction-service"
+import { sendTransaction } from "./transactions"
 import type { Program } from "@/lib/types"
 import {
   buildPunchCardCreateTransaction,

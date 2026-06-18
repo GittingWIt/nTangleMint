@@ -12,7 +12,7 @@
 
 import type { Program, PunchCard, PunchCardStatus } from "@/lib/types"
 import { getPunchCardsByParticipant, savePunchCard, getPunchCardByProgramId } from "./storage-service"
-import { sendTransaction } from "./transaction-service"
+import { sendTransaction } from "./transactions"
 import { getStoredMnemonic, getStoredPassword, getPrivKeyWif } from "./wallet-service"
 import { invalidateOnChainCache } from "./onchain-state-service"
 import {
@@ -125,20 +125,36 @@ export async function nTangle(
     throw new Error("Wallet mnemonic not available. Please log in again.")
   }
 
+  // Validate required program fields
+  const requiredPunches = program.requiredPunches
+  if (!requiredPunches || requiredPunches <= 0) {
+    throw new Error("Program is missing requiredPunches - cannot create punch card")
+  }
+
+  const expirationDays = program.expirationDays
+  if (expirationDays === undefined) {
+    throw new Error("Program is missing expirationDays - cannot create punch card")
+  }
+
+  const reward = program.reward
+  if (!reward) {
+    throw new Error("Program is missing reward - cannot create punch card")
+  }
+
+  const satoshisPerPunch = program.data?.satoshisPerPunch
+  if (!satoshisPerPunch || satoshisPerPunch <= 0) {
+    throw new Error("Program is missing satoshisPerPunch in data field - cannot create punch card")
+  }
+
   const password = getStoredPassword()
   const privKeyWif = getPrivKeyWif(mnemonic, password)
-
-  const satoshisPerPunch = program.metadata?.satoshisPerPunch || 1000
-  if (!satoshisPerPunch) {
-    throw new Error("Program is missing satoshisPerPunch - cannot create punch card")
-  }
 
   // Build 14-field OP_RETURN array using builder
   // Builders return schema objects that must be converted to arrays for broadcasting
   const nTangleSchema = buildPunchCardNTangleTransaction(
     program.id,
     program.name || "Unnamed Program",
-    program.expirationDays || 365
+    expirationDays
   )
   
   // Extract the 14-field array from schema object
@@ -168,7 +184,6 @@ export async function nTangle(
   })
 
   const now = new Date().toISOString()
-  const requiredPunches = program.metadata?.requiredPunches || 6
 
   const punchCard: PunchCard = {
     txId: result.txId,
@@ -177,7 +192,7 @@ export async function nTangle(
     participantAddress: publicAddress,
     punches: 1,
     requiredPunches,
-    reward: program.metadata?.reward || "Reward",
+    reward,
     createdAt: now,
     updatedAt: now,
     status: "active",
@@ -224,9 +239,18 @@ export async function nProcess(
     throw new Error("Wallet mnemonic not available. Please log in again.")
   }
 
+  const satoshisPerPunch = program.data?.satoshisPerPunch
+  if (!satoshisPerPunch || satoshisPerPunch <= 0) {
+    throw new Error("Program is missing satoshisPerPunch in data field - cannot process punch")
+  }
+
+  const expirationDays = program.expirationDays
+  if (expirationDays === undefined) {
+    throw new Error("Program is missing expirationDays - cannot process punch")
+  }
+
   const password = getStoredPassword()
   const privKeyWif = getPrivKeyWif(mnemonic, password)
-  const satoshisPerPunch = program.metadata?.satoshisPerPunch || 1000
 
   // Check if this punch will complete the card
   const willComplete = (existingCard.punches + 1) >= existingCard.requiredPunches
@@ -237,7 +261,7 @@ export async function nProcess(
     program.id,
     program.name || "Unnamed Program",
     existingCard.punches + 1,
-    program.expirationDays || 365
+    expirationDays
   )
   
   // Extract the 14-field array from schema object
@@ -332,6 +356,11 @@ export async function redeem(
     throw new Error("Wallet mnemonic not available. Please log in again.")
   }
 
+  const expirationDays = program.expirationDays
+  if (expirationDays === undefined) {
+    throw new Error("Program is missing expirationDays - cannot redeem punch card")
+  }
+
   const password = getStoredPassword()
   const privKeyWif = getPrivKeyWif(mnemonic, password)
 
@@ -341,7 +370,7 @@ export async function redeem(
     program.id,
     program.name || "Unnamed Program",
     card.punches,
-    program.expirationDays || 365
+    expirationDays
   )
   
   // Extract the 14-field array from schema object

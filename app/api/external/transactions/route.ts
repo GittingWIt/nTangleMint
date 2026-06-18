@@ -11,10 +11,13 @@ export async function OPTIONS(request: NextRequest) {
 interface Transaction {
   txId: string
   timestamp: number
-  type: "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete"
+  type: "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete" | "nList" | "dList" | "nTrade"
   amount: number
   programName?: string
   programId?: string
+  cardId?: string // Marketplace: card ID (Field 5 for marketplace txs)
+  listingPrice?: number // nList: listing price (Field 6)
+  salePrice?: number // nTrade: sale price (Field 6)
   status: "confirmed" | "pending"
   blockHeight?: number
 }
@@ -155,14 +158,33 @@ export async function GET(request: NextRequest) {
       // Calculate amount
       const amount = calculateTransactionAmount(tx.tx_hash, txData)
 
+      // Extract marketplace-specific fields (Field 5 = cardId, Field 6 = price/amount)
+      let cardId: string | undefined
+      let listingPrice: number | undefined
+      let salePrice: number | undefined
+
+      if (["nList", "dList", "nTrade"].includes(transactionType)) {
+        // Field 5 is cardId for marketplace transactions
+        cardId = parseResult.fields?.[5]
+
+        if (transactionType === "nList" && parseResult.fields?.[6]) {
+          listingPrice = parseInt(parseResult.fields[6], 10)
+        } else if (transactionType === "nTrade" && parseResult.fields?.[6]) {
+          salePrice = parseInt(parseResult.fields[6], 10)
+        }
+      }
+
       // Create transaction record
       const transaction: Transaction = {
         txId: tx.tx_hash,
         timestamp: tx.time || Date.now() / 1000,
-        type: transactionType as "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete",
+        type: transactionType as "Create" | "nTangle" | "nProcess" | "Redeem" | "Delete" | "nList" | "dList" | "nTrade",
         amount,
         programName,
         ...(programId && { programId }),
+        ...(cardId && { cardId }),
+        ...(listingPrice && { listingPrice }),
+        ...(salePrice && { salePrice }),
         status: (tx.confirmations && tx.confirmations > 0) ? "confirmed" : "pending",
         blockHeight: tx.height
       }
