@@ -1,12 +1,10 @@
 'use client'
 
-import { useState } from 'react'
 import type { PunchCard } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2, Zap, ShoppingCart, X } from 'lucide-react'
+import { Loader2, Zap } from 'lucide-react'
 import Link from 'next/link'
-import { MarketplaceCardActions } from '@/components/punch-card/marketplace-card-actions'
 
 interface PunchCardsSectionProps {
   activePunchCards: PunchCard[]
@@ -69,20 +67,17 @@ export function PunchCardsSection({
       {activePunchCards.length > 0 && (
         <div className="space-y-4">
           <div>
-            <h3 className="text-lg font-semibold mb-2">Active Cards</h3>
-            <p className="text-sm text-muted-foreground mb-4">Cards you own and can punch or sell</p>
+            <h3 className="text-lg font-semibold mb-2">Active Punch Cards</h3>
+            <p className="text-sm text-muted-foreground mb-4">You&apos;re currently earning punches in these programs</p>
           </div>
           <div className="grid gap-4">
             {activePunchCards.map((card) => (
-              <Card key={card.txId} className="border-blue-200">
-                <CardHeader className="flex flex-row items-start justify-between pb-3">
-                  <div className="flex-1">
-                    <CardTitle className="text-base">{card.program?.name || 'Program'}</CardTitle>
-                    <CardDescription>Punches: {card.punches}/{card.requiredPunches}</CardDescription>
-                  </div>
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Active</span>
+              <Card key={card.txId} className="border-blue-200 bg-blue-50">
+                <CardHeader>
+                  <CardTitle className="text-base">{card.program?.name || 'Program'}</CardTitle>
+                  <CardDescription>Punches: {card.punches}/{card.requiredPunches}</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all"
@@ -91,15 +86,9 @@ export function PunchCardsSection({
                       }}
                     ></div>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground mt-2">
                     {card.requiredPunches - card.punches} punches until reward
                   </p>
-                  <MarketplaceCardActions
-                    card={card}
-                    cardId={`${card.programId}_${card.participantAddress}`}
-                    programId={card.programId || ''}
-                    programName={card.program?.name || ''}
-                  />
                 </CardContent>
               </Card>
             ))}

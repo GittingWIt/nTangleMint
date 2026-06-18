@@ -5,7 +5,7 @@
  * Uses transaction-service for building, signing, and broadcasting.
  */
 
-import { sendTransaction, validateAddress } from "./transactions"
+import { sendTransaction, validateAddress } from "./transaction-service"
 import { getStoredMnemonic, getStoredPassword, getPrivKeyWif } from "./wallet-service"
 
 /**

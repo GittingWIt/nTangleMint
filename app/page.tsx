@@ -73,31 +73,7 @@ export default function LandingPage() {
         }
 
         const data = await response.json()
-        let allPrograms = data.transactions || []
-
-        // Fetch all Delete transactions to filter out deleted programs
-        try {
-          const txResponse = await fetch(`/api/external/transactions`)
-          if (txResponse.ok) {
-            const txData = await txResponse.json()
-            const deletedProgramIds = new Set<string>()
-
-            if (Array.isArray(txData.transactions)) {
-              // Collect all programIds that have Delete transactions
-              for (const tx of txData.transactions) {
-                if (tx.type === "Delete" && tx.programId) {
-                  deletedProgramIds.add(tx.programId)
-                }
-              }
-            }
-
-            // Filter out deleted programs
-            allPrograms = allPrograms.filter((p) => !deletedProgramIds.has(p.id))
-          }
-        } catch (error) {
-          console.warn("[v0] Error fetching deletion status:", error)
-        }
-
+        const allPrograms = data.transactions || []
         setAllPublicPrograms(allPrograms)
 
         // For authenticated users: get their specific programs
@@ -338,7 +314,7 @@ export default function LandingPage() {
         <section className="py-20 md:py-28 bg-muted/30">
           <div className="container mx-auto px-4">
             <div className="mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">nTangleMint Open Programs</h2>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">Active Programs</h2>
               <p className="text-muted-foreground">
                 Explore and join loyalty programs to start earning rewards
               </p>
